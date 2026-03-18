@@ -1390,11 +1390,19 @@ export default function Clinician() {
           </div>
         )}
 
-        {/* Auto Protocol Timeline */}
+        {/* Horizontal alignment graph — vertical orientation, time flows down */}
         {session.autoProtocol?.phaseMarkers?.length > 0 && session.positionLog?.length > 10 && (
           <div className="panel">
-            <h3>Protocol Timeline</h3>
-            <TimelineGraph positionLog={session.positionLog || []} phaseMarkers={session.autoProtocol.phaseMarkers} startTime={session.autoProtocol.startTime} config={session.config} />
+            <h3>Horizontal Alignment</h3>
+            <HorizontalTimelineGraph positionLog={session.positionLog || []} phaseMarkers={session.autoProtocol.phaseMarkers} startTime={session.autoProtocol.startTime} />
+          </div>
+        )}
+
+        {/* Vertical alignment graph — horizontal orientation */}
+        {session.autoProtocol?.phaseMarkers?.length > 0 && session.positionLog?.length > 10 && (
+          <div className="panel">
+            <h3>Vertical Alignment</h3>
+            <VerticalTimelineGraph positionLog={session.positionLog || []} phaseMarkers={session.autoProtocol.phaseMarkers} startTime={session.autoProtocol.startTime} />
           </div>
         )}
 
@@ -1687,8 +1695,13 @@ function PhaseMetricsTable({ positionLog, phaseMarkers, config }) {
   );
 }
 
-/** Protocol Timeline — H and V position over time with phase annotations */
-function TimelineGraph({ positionLog, phaseMarkers, startTime, config }) {
+/**
+ * Horizontal graph: VERTICAL orientation — time flows downward, eye position along X.
+ * From patient perspective: right eye on right side.
+ * Exo = right eye moves right, Eso = crosses midline to left.
+ * Smoothed with moving average.
+ */
+function HorizontalTimelineGraph({ positionLog, phaseMarkers, startTime }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {
@@ -1696,103 +1709,192 @@ function TimelineGraph({ positionLog, phaseMarkers, startTime, config }) {
     if (!canvas || !positionLog?.length) return;
     const ctx = canvas.getContext('2d');
     const w = canvas.width, h = canvas.height;
-
-    // Two graphs: H (top half) and V (bottom half)
-    const graphH = h / 2 - 15;
-    const pad = { left: 50, right: 15, top: 25, gap: 30, bottom: 25 };
+    const pad = { left: 60, right: 20, top: 35, bottom: 30 };
+    const plotW = w - pad.left - pad.right;
+    const plotH = h - pad.top - pad.bottom;
 
     ctx.fillStyle = '#0a0a0f';
     ctx.fillRect(0, 0, w, h);
 
-    const pts = [...positionLog].sort((a, b) => a.t - b.t);
-    const t0 = startTime || pts[0].t;
-    const tEnd = pts[pts.length - 1].t;
+    // Smooth the data
+    const raw = [...positionLog].filter(p => p.type === 'track').sort((a, b) => a.t - b.t);
+    const smoothed = smoothPositionData(raw, 7);
+    if (smoothed.length < 2) return;
+
+    const t0 = startTime || smoothed[0].t;
+    const tEnd = smoothed[smoothed.length - 1].t;
     const tRange = Math.max(tEnd - t0, 1000);
 
-    let maxH = 10, maxV = 10;
-    for (const p of pts) { maxH = Math.max(maxH, Math.abs(p.x)); maxV = Math.max(maxV, Math.abs(p.y)); }
-    maxH *= 1.2; maxV *= 1.2;
+    let maxAbs = 10;
+    for (const p of smoothed) maxAbs = Math.max(maxAbs, Math.abs(p.x));
+    maxAbs = Math.ceil(maxAbs * 1.3);
 
-    const toX = t => pad.left + ((t - t0) / tRange) * (w - pad.left - pad.right);
+    // Time flows DOWN (Y axis), position along X axis
+    // +X (right) = exo (right eye moves right from patient perspective)
+    // -X (left) = eso (right eye crosses to left)
+    const toX = v => pad.left + plotW / 2 + (v / maxAbs) * (plotW / 2);
+    const toY = t => pad.top + ((t - t0) / tRange) * plotH;
 
-    function drawGraph(yOff, gH, data, maxAbs, color, label) {
-      const toY = v => yOff + gH / 2 - (v / maxAbs) * (gH / 2);
+    // Center line (zero = aligned)
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(toX(0), pad.top); ctx.lineTo(toX(0), h - pad.bottom); ctx.stroke();
 
-      // Zero line
-      ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(pad.left, toY(0)); ctx.lineTo(w - pad.right, toY(0)); ctx.stroke();
+    // Labels at top
+    ctx.fillStyle = '#555b6e'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('← Eso', pad.left + plotW * 0.2, pad.top - 18);
+    ctx.fillText('Exo →', pad.left + plotW * 0.8, pad.top - 18);
+    ctx.fillStyle = '#42a5f5'; ctx.font = '11px sans-serif';
+    ctx.fillText('Right Eye — Horizontal Position', pad.left + plotW / 2, pad.top - 6);
 
-      // Label
-      ctx.fillStyle = color; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
-      ctx.fillText(label, pad.left, yOff - 4);
-
-      // Y labels
-      ctx.fillStyle = '#555b6e'; ctx.font = '9px monospace'; ctx.textAlign = 'right';
-      ctx.fillText(`+${Math.round(maxAbs)}`, pad.left - 4, yOff + 8);
-      ctx.fillText(`-${Math.round(maxAbs)}`, pad.left - 4, yOff + gH - 2);
-
-      // Track data (lines)
-      const trackPts = data.filter(p => p.type === 'track');
-      if (trackPts.length > 1) {
-        ctx.strokeStyle = color; ctx.lineWidth = 1.2; ctx.globalAlpha = 0.8;
-        ctx.beginPath();
-        trackPts.forEach((p, i) => {
-          const px = toX(p.t), py = toY(p.val);
-          i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-        });
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-      }
-
-      // Tap markers
-      data.filter(p => p.type === 'tap').forEach(p => {
-        ctx.fillStyle = '#34d399';
-        ctx.beginPath(); ctx.arc(toX(p.t), toY(p.val), 3.5, 0, Math.PI * 2); ctx.fill();
-      });
+    // X axis position labels
+    ctx.fillStyle = '#555b6e'; ctx.font = '9px monospace'; ctx.textAlign = 'center';
+    for (let v = -maxAbs; v <= maxAbs; v += Math.ceil(maxAbs / 3)) {
+      if (v === 0) continue;
+      ctx.fillText(`${v}px`, toX(v), pad.top - 22);
     }
 
-    const hData = pts.map(p => ({ ...p, val: p.x }));
-    const vData = pts.map(p => ({ ...p, val: p.y }));
+    // Time labels on left (Y axis)
+    ctx.textAlign = 'right';
+    const totalS = tRange / 1000;
+    const tickInt = totalS > 120 ? 30 : totalS > 60 ? 10 : totalS > 20 ? 5 : 2;
+    for (let s = 0; s <= totalS; s += tickInt) {
+      const ty = toY(t0 + s * 1000);
+      ctx.fillText(`${s}s`, pad.left - 8, ty + 3);
+      ctx.strokeStyle = 'rgba(255,255,255,0.04)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(pad.left, ty); ctx.lineTo(w - pad.right, ty); ctx.stroke();
+    }
 
-    drawGraph(pad.top, graphH, hData, maxH, '#42a5f5', 'Horizontal (px) — Right eye relative to left');
-    drawGraph(pad.top + graphH + pad.gap, graphH, vData, maxV, '#ffa726', 'Vertical (px)');
-
-    // Phase markers (vertical bands with labels)
+    // Phase markers (horizontal bands with labels on right)
     const markers = phaseMarkers || [];
-    ctx.font = '9px sans-serif';
+    ctx.font = '9px sans-serif'; ctx.textAlign = 'left';
+    for (let i = 0; i < markers.length; i++) {
+      const my = toY(markers[i].t);
+      const nextY = i + 1 < markers.length ? toY(markers[i + 1].t) : h - pad.bottom;
+
+      if (i % 2 === 0) {
+        ctx.fillStyle = 'rgba(107,170,255,0.03)';
+        ctx.fillRect(pad.left, my, plotW, nextY - my);
+      }
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(pad.left, my); ctx.lineTo(w - pad.right, my); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillText(markers[i].label, w - pad.right + 4, my + 10);
+    }
+
+    // Draw the smoothed trace
+    ctx.strokeStyle = '#42a5f5'; ctx.lineWidth = 2; ctx.globalAlpha = 0.85;
+    ctx.beginPath();
+    smoothed.forEach((p, i) => {
+      const px = toX(p.x), py = toY(p.t);
+      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }, [positionLog, phaseMarkers, startTime]);
+
+  return <canvas ref={canvasRef} width={500} height={700}
+    style={{ width: '100%', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)' }} />;
+}
+
+/**
+ * Vertical graph: HORIZONTAL orientation — time flows right, eye position along Y.
+ * Right hyper = target moves up (patient moves it down) = negative Y in data = plotted upward.
+ * Right hypo = target moves down = positive Y in data = plotted downward.
+ * Smoothed.
+ */
+function VerticalTimelineGraph({ positionLog, phaseMarkers, startTime }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !positionLog?.length) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    const pad = { left: 55, right: 20, top: 25, bottom: 25 };
+    const plotW = w - pad.left - pad.right;
+    const plotH = h - pad.top - pad.bottom;
+
+    ctx.fillStyle = '#0a0a0f';
+    ctx.fillRect(0, 0, w, h);
+
+    const raw = [...positionLog].filter(p => p.type === 'track').sort((a, b) => a.t - b.t);
+    const smoothed = smoothPositionData(raw, 7);
+    if (smoothed.length < 2) return;
+
+    const t0 = startTime || smoothed[0].t;
+    const tEnd = smoothed[smoothed.length - 1].t;
+    const tRange = Math.max(tEnd - t0, 1000);
+
+    let maxAbs = 10;
+    for (const p of smoothed) maxAbs = Math.max(maxAbs, Math.abs(p.y));
+    maxAbs = Math.ceil(maxAbs * 1.3);
+
+    // Time along X, vertical position along Y
+    // In data: +Y = patient moved target DOWN = right eye is HYPO (or left hyper)
+    // Display: +Y data plots DOWNWARD on graph (right hypo = down on graph)
+    // -Y data = patient moved target UP = right eye is HYPER = plots UPWARD
+    const toX = t => pad.left + ((t - t0) / tRange) * plotW;
+    const toY = v => pad.top + plotH / 2 + (v / maxAbs) * (plotH / 2); // +v = down on graph
+
+    // Zero line
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad.left, toY(0)); ctx.lineTo(w - pad.right, toY(0)); ctx.stroke();
+
+    // Labels
+    ctx.fillStyle = '#ffa726'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('Right Eye — Vertical Position', pad.left, pad.top - 8);
+    ctx.fillStyle = '#555b6e'; ctx.font = '10px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText('R Hyper ↑', pad.left - 4, pad.top + 10);
+    ctx.fillText('R Hypo ↓', pad.left - 4, h - pad.bottom - 4);
+
+    // Y axis labels
+    ctx.font = '9px monospace';
+    for (let v = -maxAbs; v <= maxAbs; v += Math.ceil(maxAbs / 3)) {
+      if (v === 0) continue;
+      ctx.fillText(`${v}px`, pad.left - 8, toY(v) + 3);
+    }
+
+    // Time labels
     ctx.textAlign = 'center';
+    const totalS = tRange / 1000;
+    const tickInt = totalS > 120 ? 30 : totalS > 60 ? 10 : totalS > 20 ? 5 : 2;
+    for (let s = 0; s <= totalS; s += tickInt) {
+      ctx.fillText(`${s}s`, toX(t0 + s * 1000), h - 5);
+    }
+
+    // Phase markers
+    const markers = phaseMarkers || [];
+    ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
     for (let i = 0; i < markers.length; i++) {
       const mx = toX(markers[i].t);
       const nextX = i + 1 < markers.length ? toX(markers[i + 1].t) : w - pad.right;
-
-      // Alternating subtle background bands
       if (i % 2 === 0) {
-        ctx.fillStyle = 'rgba(107,170,255,0.03)';
-        ctx.fillRect(mx, 0, nextX - mx, h);
+        ctx.fillStyle = 'rgba(255,152,0,0.03)';
+        ctx.fillRect(mx, pad.top, nextX - mx, plotH);
       }
-
-      // Vertical line
-      ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1;
       ctx.setLineDash([3, 3]);
-      ctx.beginPath(); ctx.moveTo(mx, 0); ctx.lineTo(mx, h); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(mx, pad.top); ctx.lineTo(mx, h - pad.bottom); ctx.stroke();
       ctx.setLineDash([]);
-
-      // Label
-      ctx.fillStyle = 'rgba(255,255,255,0.4)';
-      const lx = (mx + nextX) / 2;
-      ctx.fillText(markers[i].label, lx, 10);
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillText(markers[i].label, (mx + nextX) / 2, pad.top - 2);
     }
 
-    // Time axis
-    ctx.fillStyle = '#555b6e'; ctx.font = '9px monospace'; ctx.textAlign = 'center';
-    const totalS = tRange / 1000;
-    const tickInterval = totalS > 120 ? 30 : totalS > 60 ? 10 : totalS > 20 ? 5 : 2;
-    for (let s = 0; s <= totalS; s += tickInterval) {
-      ctx.fillText(`${s}s`, toX(t0 + s * 1000), h - 5);
-    }
-  }, [positionLog, phaseMarkers, startTime, config]);
+    // Smoothed trace
+    ctx.strokeStyle = '#ffa726'; ctx.lineWidth = 2; ctx.globalAlpha = 0.85;
+    ctx.beginPath();
+    smoothed.forEach((p, i) => {
+      const px = toX(p.t), py = toY(p.y);
+      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }, [positionLog, phaseMarkers, startTime]);
 
-  return <canvas ref={canvasRef} width={800} height={380}
+  return <canvas ref={canvasRef} width={700} height={250}
     style={{ width: '100%', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)' }} />;
 }
 

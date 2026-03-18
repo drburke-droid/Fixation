@@ -49,16 +49,34 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
         });
       }
 
-      // Draw instruction text
-      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      // Draw instruction text — large for 25ft mirror viewing, middle third of screen
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       const lines = ap.message.split('\n');
-      const fontSize = Math.min(28, w / 25);
-      ctx.font = `500 ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
-      const textY = h * 0.72;
+      const fontSize = Math.min(h * 0.07, w / 12); // Large — scales with screen
+      ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
+      const maxTextWidth = w / 3; // Middle third
+      const textY = h * 0.65;
       lines.forEach((line, i) => {
-        ctx.fillText(line, centerX, textY + (i - (lines.length - 1) / 2) * (fontSize * 1.5));
+        // Word wrap within middle third
+        const words = line.split(' ');
+        let wrappedLines = [];
+        let currentLine = '';
+        for (const word of words) {
+          const test = currentLine ? `${currentLine} ${word}` : word;
+          if (ctx.measureText(test).width > maxTextWidth && currentLine) {
+            wrappedLines.push(currentLine);
+            currentLine = word;
+          } else {
+            currentLine = test;
+          }
+        }
+        if (currentLine) wrappedLines.push(currentLine);
+        wrappedLines.forEach((wl, j) => {
+          const yPos = textY + (i * wrappedLines.length + j - (lines.length * wrappedLines.length - 1) / 2) * (fontSize * 1.4);
+          ctx.fillText(wl, centerX, yPos);
+        });
       });
 
       animRef.current = requestAnimationFrame(draw);
