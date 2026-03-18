@@ -34,7 +34,7 @@ const defaultConfig = {
   paragraphFontSizeNear: 15,
   saccadeJumps: 16,
   saccadeAmplitudePx: 600,
-  saccadePauseDurationMs: 200,
+  saccadePauseDurationMs: 600,
   mirrorDistance: true,
   displayPPI: 96,
   nearDisplayPPI: 132,
