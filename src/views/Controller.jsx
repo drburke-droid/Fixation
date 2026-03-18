@@ -3,13 +3,13 @@ import { useParams } from 'react-router-dom';
 import { connectToHost } from '../lib/peer';
 
 const SENSITIVITY = {
-  fine:   { baseStep: 0.5, accelDivisor: 200, maxStep: 3 },
-  normal: { baseStep: 2,   accelDivisor: 100, maxStep: 15 },
-  coarse: { baseStep: 5,   accelDivisor: 50,  maxStep: 40 },
+  fine:   { multiplier: 0.3, maxStep: 8 },
+  normal: { multiplier: 1.0, maxStep: 40 },
+  coarse: { multiplier: 3.0, maxStep: 120 },
 };
 
-const DEAD_ZONE = 5;
-const EMIT_INTERVAL = 30;
+const DEAD_ZONE = 2;
+const EMIT_INTERVAL = 16; // ~60fps
 const DOUBLE_TAP_INTERVAL = 400; // ms between taps
 const TAP_MOVE_THRESHOLD = 20;   // px max movement to count as tap
 
@@ -56,17 +56,14 @@ export default function Controller() {
     }
   }, [status]);
 
-  const computeStep = useCallback((dx, dy, elapsed) => {
+  const computeStep = useCallback((dx, dy) => {
     const sens = SENSITIVITY[sensitivity] || SENSITIVITY.normal;
     const distance = Math.sqrt(dx * dx + dy * dy);
     if (distance < DEAD_ZONE) return { stepX: 0, stepY: 0 };
-    const speed = elapsed > 0 ? distance / elapsed : 0;
-    const accel = 1 + distance / sens.accelDivisor + speed * 0.5;
-    const stepMag = Math.min(sens.baseStep * accel, sens.maxStep);
-    return {
-      stepX: (dx / distance) * stepMag,
-      stepY: (dy / distance) * stepMag,
-    };
+    // Direct proportional: finger movement * multiplier, clamped per-axis
+    const stepX = Math.max(-sens.maxStep, Math.min(sens.maxStep, dx * sens.multiplier));
+    const stepY = Math.max(-sens.maxStep, Math.min(sens.maxStep, dy * sens.multiplier));
+    return { stepX, stepY };
   }, [sensitivity]);
 
   const handleTouchStart = useCallback((e) => {
@@ -91,8 +88,7 @@ export default function Controller() {
     const touch = e.touches[0];
     const dx = touch.clientX - ref.lastX;
     const dy = touch.clientY - ref.lastY;
-    const elapsed = now - ref.lastEmit;
-    const { stepX, stepY } = computeStep(dx, dy, elapsed);
+    const { stepX, stepY } = computeStep(dx, dy);
 
     if (stepX !== 0 || stepY !== 0) {
       clientRef.current?.send({
