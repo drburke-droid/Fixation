@@ -8,18 +8,14 @@ export default function NearDisplay() {
   const [state, setState] = useState(null);
   const [flashActive, setFlashActive] = useState(false);
   const [status, setStatus] = useState('Connecting...');
-  const [failed, setFailed] = useState(false);
+  const [connected, setConnected] = useState(false);
   const clientRef = useRef(null);
   const mountedRef = useRef(true);
 
-  const doConnect = useCallback(() => {
-    clientRef.current?.destroy();
-    clientRef.current = null;
-    setState(null);
-    setFailed(false);
-    setStatus('Connecting...');
+  useEffect(() => {
+    mountedRef.current = true;
 
-    connectToHost(hostPeerId, 'near',
+    const promise = connectToHost(hostPeerId, 'near',
       (msg) => {
         if (!mountedRef.current) return;
         switch (msg.type) {
@@ -39,43 +35,40 @@ export default function NearDisplay() {
       },
       () => {
         if (!mountedRef.current) return;
-        setState(null);
-        setStatus('Disconnected');
-        setFailed(true);
+        setConnected(false);
       },
-      (statusMsg) => { if (mountedRef.current) setStatus(statusMsg); },
-    ).then(client => {
+      (statusMsg) => {
+        if (!mountedRef.current) return;
+        setStatus(statusMsg);
+        if (statusMsg === 'Connected!') setConnected(true);
+        else if (statusMsg.includes('retrying') || statusMsg.includes('Disconnected')) setConnected(false);
+      },
+    );
+
+    promise.then(client => {
       if (!mountedRef.current) { client.destroy(); return; }
       clientRef.current = client;
-      setStatus('Connected');
-    }).catch(err => {
-      if (!mountedRef.current) return;
-      setStatus(`Failed: ${err?.message || err}`);
-      setFailed(true);
+      setConnected(true);
     });
-  }, [hostPeerId]);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    doConnect();
     return () => {
       mountedRef.current = false;
       clientRef.current?.destroy();
+      promise._ctrl?.destroy();
     };
-  }, [doConnect]);
+  }, [hostPeerId]);
 
   const handleClick = () => {
-    if (failed) { doConnect(); return; }
     document.documentElement.requestFullscreen?.().catch(() => {});
   };
 
-  if (!state) {
+  if (!state || !connected) {
     return (
       <div className="display-fullscreen" onClick={handleClick}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', cursor: 'pointer' }}>
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
         <div style={{ color: '#8b949e', fontSize: '14px' }}>{status}</div>
         <div style={{ color: '#484f58', fontSize: '12px', marginTop: 8 }}>Host: {hostPeerId}</div>
-        {failed && <div style={{ color: '#58a6ff', fontSize: '14px', marginTop: 16 }}>Click to retry</div>}
+        <div style={{ color: '#484f58', fontSize: '11px', marginTop: 12 }}>Retrying automatically</div>
       </div>
     );
   }

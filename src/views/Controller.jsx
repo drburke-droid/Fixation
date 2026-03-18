@@ -15,19 +15,13 @@ export default function Controller() {
   const { sessionId: hostPeerId } = useParams();
   const [connected, setConnected] = useState(false);
   const [status, setStatus] = useState('Initializing...');
-  const [failed, setFailed] = useState(false);
   const [sensitivity, setSensitivity] = useState('normal');
   const clientRef = useRef(null);
   const touchRef = useRef({ lastX: 0, lastY: 0, lastEmit: 0 });
   const mountedRef = useRef(true);
 
-  const doConnect = useCallback(() => {
-    // Clean up previous
-    clientRef.current?.destroy();
-    clientRef.current = null;
-    setConnected(false);
-    setFailed(false);
-    setStatus('Connecting...');
+  useEffect(() => {
+    mountedRef.current = true;
 
     const promise = connectToHost(
       hostPeerId,
@@ -41,8 +35,6 @@ export default function Controller() {
       () => {
         if (!mountedRef.current) return;
         setConnected(false);
-        setStatus('Disconnected from host');
-        setFailed(true);
       },
       (statusMsg) => {
         if (mountedRef.current) setStatus(statusMsg);
@@ -53,22 +45,22 @@ export default function Controller() {
       if (!mountedRef.current) { client.destroy(); return; }
       clientRef.current = client;
       setConnected(true);
-      setFailed(false);
-    }).catch(err => {
-      if (!mountedRef.current) return;
-      setStatus(`Failed: ${err?.message || err}`);
-      setFailed(true);
     });
-  }, [hostPeerId]);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    doConnect();
     return () => {
       mountedRef.current = false;
       clientRef.current?.destroy();
+      promise._ctrl?.destroy();
     };
-  }, [doConnect]);
+  }, [hostPeerId]);
+
+  // Watch for reconnection via status changes
+  useEffect(() => {
+    if (status === 'Connected!') setConnected(true);
+    else if (status.includes('retrying') || status.includes('Disconnected') || status.includes('timed out')) {
+      setConnected(false);
+    }
+  }, [status]);
 
   const computeStep = useCallback((dx, dy, elapsed) => {
     const sens = SENSITIVITY[sensitivity] || SENSITIVITY.normal;
@@ -85,17 +77,13 @@ export default function Controller() {
 
   const handleTouchStart = useCallback((e) => {
     e.preventDefault();
-    if (!connected && failed) {
-      doConnect();
-      return;
-    }
     const touch = e.touches[0];
     touchRef.current = {
       lastX: touch.clientX,
       lastY: touch.clientY,
       lastEmit: performance.now(),
     };
-  }, [connected, failed, doConnect]);
+  }, []);
 
   const handleTouchMove = useCallback((e) => {
     e.preventDefault();
@@ -162,17 +150,21 @@ export default function Controller() {
         </>
       ) : (
         <div style={{ textAlign: 'center', padding: '20px' }}>
-          <div style={{ color: '#8b949e', fontSize: '14px', marginBottom: '12px', padding: '0 20px' }}>
+          <div style={{
+            width: 30, height: 30, border: '3px solid #333', borderTopColor: '#58a6ff',
+            borderRadius: '50%', margin: '0 auto 16px',
+            animation: 'spin 1s linear infinite',
+          }} />
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          <div style={{ color: '#8b949e', fontSize: '14px', marginBottom: '8px', padding: '0 20px' }}>
             {status}
           </div>
-          <div style={{ color: '#484f58', fontSize: '12px', marginTop: '8px' }}>
+          <div style={{ color: '#484f58', fontSize: '12px' }}>
             Host: {hostPeerId}
           </div>
-          {failed && (
-            <div style={{ color: '#58a6ff', fontSize: '16px', marginTop: '24px' }}>
-              Tap to retry
-            </div>
-          )}
+          <div style={{ color: '#484f58', fontSize: '11px', marginTop: '16px' }}>
+            Retrying automatically — keep this screen open
+          </div>
         </div>
       )}
     </div>
