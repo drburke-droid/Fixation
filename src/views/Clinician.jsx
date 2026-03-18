@@ -52,6 +52,7 @@ export default function Clinician() {
   const saccadeTimerRef = useRef(null);
   const trackingTimerRef = useRef(null);
   const trackingStartRef = useRef(null);
+  const doubleTapHandlerRef = useRef(null);
 
   // Collapsible sections
   const [showConfig, setShowConfig] = useState(false);
@@ -132,8 +133,7 @@ export default function Clinician() {
             y: next.targets.movableY,
           });
         } else if (msg.type === 'double-tap') {
-          // Auto-capture on double-tap during saccade protocol adjusting
-          handleDoubleTapCapture();
+          doubleTapHandlerRef.current?.();
         }
       },
       roomName.trim(),
@@ -219,6 +219,9 @@ export default function Clinician() {
       if (s) setSession({ ...s });
     }
   }, [doCapture, trialProtocol, trialState, logPosition]);
+
+  // Keep ref in sync so message handler always has latest version
+  doubleTapHandlerRef.current = handleDoubleTapCapture;
 
   // Start continuous tracking at ~30fps
   const handleStartTracking = useCallback(() => {
@@ -977,6 +980,8 @@ export default function Clinician() {
                   hostRef.current?.broadcast({
                     type: 'target-moved', x: next.targets.movableX, y: next.targets.movableY,
                   });
+                } else if (msg.type === 'double-tap') {
+                  doubleTapHandlerRef.current?.();
                 }
               },
               roomName.trim(),
