@@ -35,6 +35,7 @@ const defaultConfig = {
   saccadeJumps: 16,
   saccadeAmplitudePx: 900,
   saccadePauseDurationMs: 600,
+  prismSweepSequence: [6, 4, 2, 0, -2, -4, -6], // positive=BO, negative=BI
   mirrorDistance: true,
   displayPPI: 96,
   nearDisplayPPI: 132,
@@ -84,7 +85,9 @@ export function createSession({ patientId = '', examiner = '', config = {} } = {
       movableIsRed: true,
     },
     trials: [],
-    positionLog: [],  // { t: ms, x, y, protocol, phase, type: 'tap'|'track'|'capture' }
+    positionLog: [],
+    prismSweepResults: [],
+    prismSweepIndex: 0,
     summaryText: '',
   };
 }

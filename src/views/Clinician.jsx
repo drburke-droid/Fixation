@@ -6,7 +6,10 @@ import {
   resetTarget, updateConfig, updateSuppression, updateCalibration,
   captureTrial,
 } from '../lib/sessionStore';
-import { computeTrialMetrics, computeTrialStats, generateEMRSummary, getPrismLabels, formatPrism } from '../lib/measurement';
+import {
+  computeTrialMetrics, computeTrialStats, generateEMRSummary, getPrismLabels, formatPrism,
+  prismDioptersToPx, computeFDCurve, analyzeTrackingTrajectory, analyzeRecoveryDynamics, pearsonCorrelation,
+} from '../lib/measurement';
 import { renderTargets } from '../lib/targets';
 
 const PHASES = [
@@ -52,6 +55,7 @@ export default function Clinician() {
   const saccadeTimerRef = useRef(null);
   const trackingTimerRef = useRef(null);
   const trackingStartRef = useRef(null);
+  const recoveryTimerRef = useRef(null);
   const doubleTapHandlerRef = useRef(null);
 
   // Collapsible sections
@@ -172,6 +176,7 @@ export default function Clinician() {
     setEyesOpenTime(null);
     setElapsed(0);
     setSaccadeProgress(0);
+    if (recoveryTimerRef.current) { clearInterval(recoveryTimerRef.current); recoveryTimerRef.current = null; }
   }, [eyesOpenTime]);
 
   // Log current position to positionLog
@@ -299,10 +304,22 @@ export default function Clinician() {
       if (step > jumps) {
         clearInterval(saccadeTimerRef.current);
         saccadeTimerRef.current = null;
-        // Saccade done — transition to adjusting
+        // Saccade done — transition to adjusting + start recovery logging
         setTrialState('adjusting');
         setEyesOpenTime(Date.now());
         setSaccadeProgress(1);
+        // Record recovery trajectory at 30fps
+        if (recoveryTimerRef.current) clearInterval(recoveryTimerRef.current);
+        recoveryTimerRef.current = setInterval(() => {
+          const rs = sessionRef.current;
+          if (!rs) return;
+          const phase = rs.phase === 'distance-align' ? 'distance' : 'near';
+          rs.positionLog = [...(rs.positionLog || []), {
+            t: Date.now(), x: rs.targets.movableX, y: rs.targets.movableY,
+            protocol: 'saccade', phase, type: 'recovery',
+          }];
+          sessionRef.current = rs;
+        }, 33);
       }
     }, pauseMs);
   }, []);
@@ -480,24 +497,43 @@ export default function Clinician() {
             {trialState === 'idle' && (
               <div>
                 <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 6 }}>Choose protocol:</div>
-                <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                <div style={{ display: 'flex', gap: 5, marginBottom: 6 }}>
                   <button className="primary" onClick={() => handleNewTrial('closeEyes')}
-                    style={{ flex: 1, padding: '10px', fontSize: '12px', borderRadius: '10px', fontWeight: 600 }}>
+                    style={{ flex: 1, padding: '8px', fontSize: '11px', borderRadius: '10px', fontWeight: 600 }}>
                     Close Eyes
                   </button>
                   <button className="accent" onClick={() => handleNewTrial('saccade')}
-                    style={{ flex: 1, padding: '10px', fontSize: '12px', borderRadius: '10px', fontWeight: 600 }}>
+                    style={{ flex: 1, padding: '8px', fontSize: '11px', borderRadius: '10px', fontWeight: 600 }}>
                     Saccade
                   </button>
                   <button onClick={handleStartTracking}
-                    style={{ flex: 1, padding: '10px', fontSize: '12px', borderRadius: '10px', fontWeight: 600, background: 'linear-gradient(135deg, #5c1690, #7b2fbe)', borderColor: 'rgba(156,39,176,0.3)', color: '#fff', boxShadow: '0 0 12px rgba(123,47,190,0.15)' }}>
+                    style={{ flex: 1, padding: '8px', fontSize: '11px', borderRadius: '10px', fontWeight: 600, background: 'linear-gradient(135deg, #5c1690, #7b2fbe)', borderColor: 'rgba(156,39,176,0.3)', color: '#fff' }}>
                     Tracking
                   </button>
+                  <button onClick={() => {
+                    // Start prism sweep protocol
+                    const s = sessionRef.current;
+                    if (!s) return;
+                    const seq = s.config.prismSweepSequence || [6,4,2,0,-2,-4,-6];
+                    const isNear = s.phase === 'near-align';
+                    const ppi = isNear ? s.config.nearDisplayPPI : s.config.displayPPI;
+                    const dist = isNear ? s.config.nearDistanceMm : s.config.distanceOpticalDistanceMm;
+                    const offsetPx = prismDioptersToPx(seq[0], dist, ppi);
+                    const next = { ...s, prismSweepIndex: 0, prismSweepResults: [],
+                      targets: { ...s.targets, fixedX: offsetPx, movableX: 0, movableY: 0 } };
+                    sessionRef.current = next;
+                    setSession({ ...next });
+                    hostRef.current?.broadcast({ type: 'state-updated', state: next });
+                    setTrialProtocol('prismSweep');
+                    setTrialState('adjusting');
+                    setEyesOpenTime(Date.now());
+                  }}
+                    style={{ flex: 1, padding: '8px', fontSize: '11px', borderRadius: '10px', fontWeight: 600, background: 'linear-gradient(135deg, #b85c00, #e67e00)', borderColor: 'rgba(230,126,0,0.3)', color: '#fff' }}>
+                    Prism Sweep
+                  </button>
                 </div>
-                <p style={{ fontSize: '9px', color: 'var(--text-muted)', lineHeight: 1.4 }}>
-                  Close Eyes: close → open → adjust → capture |
-                  Saccade: lock jumps L/R → adjust → double-tap |
-                  Tracking: continuous 30fps recording while patient maintains alignment
+                <p style={{ fontSize: '8px', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                  Close Eyes | Saccade | Tracking (30fps) | Prism Sweep (FD curve)
                 </p>
               </div>
             )}
@@ -582,13 +618,52 @@ export default function Clinician() {
             {/* ADJUSTING: patient aligns targets */}
             {trialState === 'adjusting' && (
               <div>
+                {/* Prism sweep status */}
+                {trialProtocol === 'prismSweep' && (() => {
+                  const seq = session.config.prismSweepSequence || [6,4,2,0,-2,-4,-6];
+                  const idx = session.prismSweepIndex || 0;
+                  const demand = seq[idx] || 0;
+                  return (
+                    <div style={{ fontSize: '12px', marginBottom: 8, padding: '6px 10px', borderRadius: '8px', background: 'rgba(230,126,0,0.08)', border: '1px solid rgba(230,126,0,0.15)' }}>
+                      Step {idx + 1}/{seq.length}: <b>{demand > 0 ? `${demand} BO` : demand < 0 ? `${Math.abs(demand)} BI` : '0 (baseline)'}</b>
+                    </div>
+                  );
+                })()}
                 <p style={{ fontSize: '12px', color: 'var(--success)', marginBottom: 4 }}>
                   Patient adjusting... ({(elapsed / 1000).toFixed(1)}s)
-                  {trialProtocol === 'saccade' && (
-                    <span style={{ color: 'var(--text-muted)' }}> — awaiting double-tap or capture</span>
-                  )}
+                  {trialProtocol === 'saccade' && <span style={{ color: 'var(--text-muted)' }}> — double-tap or capture</span>}
                 </p>
-                <button className="primary" onClick={handleCaptureTrial}
+                <button className="primary" onClick={() => {
+                  if (trialProtocol === 'prismSweep') {
+                    // Capture prism sweep step and advance
+                    const s = sessionRef.current;
+                    if (!s) return;
+                    const seq = s.config.prismSweepSequence || [6,4,2,0,-2,-4,-6];
+                    const idx = s.prismSweepIndex || 0;
+                    const isNear = s.phase === 'near-align';
+                    const ppi = isNear ? s.config.nearDisplayPPI : s.config.displayPPI;
+                    const dist = isNear ? s.config.nearDistanceMm : s.config.distanceOpticalDistanceMm;
+                    const metrics = computeTrialMetrics(s.targets.movableX, s.targets.movableY, ppi, dist);
+                    const result = { demandPrism: seq[idx], measuredFD: metrics.horizontalPrism, xPx: s.targets.movableX, yPx: s.targets.movableY, capturedAt: new Date().toISOString() };
+                    const nextIdx = idx + 1;
+                    let next;
+                    if (nextIdx < seq.length) {
+                      const nextOffset = prismDioptersToPx(seq[nextIdx], dist, ppi);
+                      next = { ...s, prismSweepIndex: nextIdx, prismSweepResults: [...(s.prismSweepResults||[]), result],
+                        targets: { ...s.targets, fixedX: nextOffset, movableX: 0, movableY: 0 } };
+                    } else {
+                      // Sweep complete
+                      next = { ...s, prismSweepIndex: nextIdx, prismSweepResults: [...(s.prismSweepResults||[]), result],
+                        targets: { ...s.targets, fixedX: 0, movableX: 0, movableY: 0 } };
+                      setTrialState('idle');
+                    }
+                    sessionRef.current = next;
+                    setSession({ ...next });
+                    hostRef.current?.broadcast({ type: 'state-updated', state: next });
+                  } else {
+                    handleCaptureTrial();
+                  }
+                }}
                   style={{
                     width: '100%', padding: '14px', fontSize: '16px', fontWeight: 700,
                     background: 'linear-gradient(135deg, #1a8a40, #2ea043, #1a8a40)',
@@ -596,11 +671,11 @@ export default function Clinician() {
                     boxShadow: '0 4px 20px rgba(46,160,67,0.2), inset 0 1px 0 rgba(255,255,255,0.08)',
                     letterSpacing: '0.02em', transition: 'all 0.2s ease',
                   }}>
-                  LOCK IN MEASUREMENT
+                  {trialProtocol === 'prismSweep'
+                    ? `CAPTURE & ${(session.prismSweepIndex || 0) + 1 < (session.config.prismSweepSequence || []).length ? 'NEXT STEP' : 'FINISH'}`
+                    : 'LOCK IN MEASUREMENT'}
                 </button>
-                <button onClick={handleResetTarget} style={{ fontSize: '11px' }}>
-                  Re-center
-                </button>
+                <button onClick={handleResetTarget} style={{ fontSize: '11px' }}>Re-center</button>
               </div>
             )}
 
@@ -1130,6 +1205,38 @@ export default function Clinician() {
           </div>
         )}
 
+        {/* FD Curve (Prism Sweep) */}
+        {session.prismSweepResults?.length >= 2 && (
+          <div className="panel">
+            <h3>Forced Vergence FD Curve</h3>
+            <FDCurveGraph sweepResults={session.prismSweepResults} />
+          </div>
+        )}
+
+        {/* Tracking Analysis */}
+        {session.positionLog?.filter(p => p.type === 'track').length > 10 && (
+          <div className="panel">
+            <h3>Tracking Analysis</h3>
+            <TrackingAnalysisPanel trackPoints={session.positionLog.filter(p => p.type === 'track')} />
+          </div>
+        )}
+
+        {/* Recovery Dynamics */}
+        {session.positionLog?.filter(p => p.type === 'recovery').length > 5 && (
+          <div className="panel">
+            <h3>Recovery Dynamics</h3>
+            <RecoveryDynamicsGraph recoveryPoints={session.positionLog.filter(p => p.type === 'recovery')} />
+          </div>
+        )}
+
+        {/* H-V Scatter Plot */}
+        {session.trials.length >= 2 && (
+          <div className="panel">
+            <h3>H-V Scatter</h3>
+            <HVScatterPlot trials={session.trials} />
+          </div>
+        )}
+
         {/* Statistics */}
         {(distStats || nearStats) && (
           <div className="panel">
@@ -1333,6 +1440,215 @@ function PositionGraph({ positionLog, trials, config, targets }) {
 
   return <canvas ref={canvasRef} width={600} height={200}
     style={{ width: '100%', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)', boxShadow: 'inset 0 1px 4px rgba(0,0,0,0.3)' }} />;
+}
+
+/** FD Curve graph — plots the Ogle-type forced vergence S-curve */
+function FDCurveGraph({ sweepResults }) {
+  const canvasRef = useRef(null);
+  const curve = useMemo(() => computeFDCurve(sweepResults), [sweepResults]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !curve) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    const pad = { top: 20, right: 20, bottom: 30, left: 55 };
+    const pw = w - pad.left - pad.right, ph = h - pad.top - pad.bottom;
+
+    ctx.fillStyle = '#0d1117';
+    ctx.fillRect(0, 0, w, h);
+
+    const pts = curve.points;
+    const maxD = Math.max(...pts.map(p => Math.abs(p.demand)), 1) * 1.2;
+    const maxF = Math.max(...pts.map(p => Math.abs(p.fd)), 0.5) * 1.3;
+
+    const toX = d => pad.left + ((d + maxD) / (2 * maxD)) * pw;
+    const toY = f => pad.top + ph / 2 - (f / maxF) * (ph / 2);
+
+    // Grid
+    ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad.left, toY(0)); ctx.lineTo(w - pad.right, toY(0)); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(toX(0), pad.top); ctx.lineTo(toX(0), h - pad.bottom); ctx.stroke();
+
+    // Labels
+    ctx.fillStyle = '#555b6e'; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+    ctx.fillText('BO ←', pad.left + 30, h - 5);
+    ctx.fillText('→ BI', w - pad.right - 30, h - 5);
+    ctx.textAlign = 'right';
+    ctx.fillText('Eso', pad.left - 4, pad.top + 10);
+    ctx.fillText('Exo', pad.left - 4, h - pad.bottom - 4);
+
+    // Curve line
+    ctx.strokeStyle = '#6baaff'; ctx.lineWidth = 2; ctx.beginPath();
+    pts.forEach((p, i) => { const x = toX(p.demand), y = toY(p.fd); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); });
+    ctx.stroke();
+
+    // Points
+    pts.forEach(p => {
+      ctx.fillStyle = '#6baaff';
+      ctx.beginPath(); ctx.arc(toX(p.demand), toY(p.fd), 4, 0, Math.PI * 2); ctx.fill();
+    });
+
+    // X-intercept
+    if (curve.xIntercept !== null) {
+      const xi = toX(curve.xIntercept);
+      ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 1; ctx.setLineDash([4,4]);
+      ctx.beginPath(); ctx.moveTo(xi, pad.top); ctx.lineTo(xi, h - pad.bottom); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#fbbf24'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(`Assoc. phoria: ${curve.xIntercept.toFixed(1)} pd`, xi, pad.top - 4);
+    }
+
+    // Slope annotation
+    ctx.fillStyle = '#9298a8'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText(`Slope: ${curve.slope.toFixed(3)}`, w - pad.right, pad.top + 10);
+  }, [curve]);
+
+  return <canvas ref={canvasRef} width={600} height={220}
+    style={{ width: '100%', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)' }} />;
+}
+
+/** Tracking trajectory analysis panel */
+function TrackingAnalysisPanel({ trackPoints }) {
+  const analysis = useMemo(() => analyzeTrackingTrajectory(trackPoints), [trackPoints]);
+  if (!analysis) return null;
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: '12px', fontFamily: "'SF Mono', monospace" }}>
+      <div><span style={{ color: 'var(--text-muted)' }}>Duration:</span> {analysis.durationS}s ({analysis.samples} pts)</div>
+      <div><span style={{ color: 'var(--text-muted)' }}>Mean drift:</span> {analysis.meanDriftVelocity} px/s</div>
+      <div><span style={{ color: 'var(--text-muted)' }}>Peak drift:</span> {analysis.peakDriftVelocity} px/s</div>
+      <div><span style={{ color: 'var(--text-muted)' }}>Correction freq:</span> {analysis.correctionFrequency} Hz</div>
+      <div><span style={{ color: 'var(--text-muted)' }}>Drift bias X:</span> {analysis.driftBiasX} px</div>
+      <div><span style={{ color: 'var(--text-muted)' }}>Drift bias Y:</span> {analysis.driftBiasY} px</div>
+      <div><span style={{ color: 'var(--text-muted)' }}>Dom. frequency:</span> {analysis.dominantFrequency} Hz</div>
+    </div>
+  );
+}
+
+/** Recovery dynamics graph — shows trajectory after saccade disruption */
+function RecoveryDynamicsGraph({ recoveryPoints }) {
+  const canvasRef = useRef(null);
+  const analysis = useMemo(() => analyzeRecoveryDynamics(recoveryPoints), [recoveryPoints]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !analysis) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    const pad = { top: 20, right: 20, bottom: 30, left: 50 };
+    const pw = w - pad.left - pad.right, ph = h - pad.top - pad.bottom;
+
+    ctx.fillStyle = '#0d1117';
+    ctx.fillRect(0, 0, w, h);
+
+    const pts = analysis.points;
+    if (pts.length < 2) return;
+    const maxT = pts[pts.length - 1].t || 1;
+    const maxAbs = Math.max(analysis.peakDisplacementX, analysis.peakDisplacementY, 5) * 1.2;
+
+    const toX = t => pad.left + (t / maxT) * pw;
+    const toY = v => pad.top + ph / 2 - (v / maxAbs) * (ph / 2);
+
+    // Zero line
+    ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad.left, toY(0)); ctx.lineTo(w - pad.right, toY(0)); ctx.stroke();
+
+    // H line (blue)
+    ctx.strokeStyle = '#42a5f5'; ctx.lineWidth = 2; ctx.beginPath();
+    pts.forEach((p, i) => { i === 0 ? ctx.moveTo(toX(p.t), toY(p.x)) : ctx.lineTo(toX(p.t), toY(p.x)); });
+    ctx.stroke();
+
+    // V line (orange)
+    ctx.strokeStyle = '#ffa726'; ctx.lineWidth = 2; ctx.beginPath();
+    pts.forEach((p, i) => { i === 0 ? ctx.moveTo(toX(p.t), toY(p.y)) : ctx.lineTo(toX(p.t), toY(p.y)); });
+    ctx.stroke();
+
+    // Stabilize marker
+    if (analysis.timeToStabilize < maxT) {
+      const sx = toX(analysis.timeToStabilize);
+      ctx.strokeStyle = '#34d399'; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(sx, pad.top); ctx.lineTo(sx, h - pad.bottom); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Annotations
+    ctx.fillStyle = '#9298a8'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(`${analysis.damping} | settle: ${analysis.timeToStabilize}s | oscillations: ${analysis.oscillationCount}`, pad.left, h - 5);
+  }, [analysis]);
+
+  return <canvas ref={canvasRef} width={600} height={180}
+    style={{ width: '100%', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)' }} />;
+}
+
+/** H-V Scatter plot — horizontal vs vertical FD across trials */
+function HVScatterPlot({ trials }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || trials.length < 1) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    const pad = { top: 20, right: 20, bottom: 30, left: 50 };
+    const pw = w - pad.left - pad.right, ph = h - pad.top - pad.bottom;
+
+    ctx.fillStyle = '#0d1117';
+    ctx.fillRect(0, 0, w, h);
+
+    const hs = trials.map(t => t.horizontalPrism);
+    const vs = trials.map(t => t.verticalPrism);
+    const maxH = Math.max(...hs.map(Math.abs), 0.5) * 1.3;
+    const maxV = Math.max(...vs.map(Math.abs), 0.5) * 1.3;
+
+    const toX = v => pad.left + ((v + maxH) / (2 * maxH)) * pw;
+    const toY = v => pad.top + ((v + maxV) / (2 * maxV)) * ph;
+
+    // Crosshair
+    ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(toX(0), pad.top); ctx.lineTo(toX(0), h - pad.bottom); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(pad.left, toY(0)); ctx.lineTo(w - pad.right, toY(0)); ctx.stroke();
+
+    // Labels
+    ctx.fillStyle = '#555b6e'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Eso →', w - pad.right - 20, toY(0) - 4);
+    ctx.fillText('← Exo', pad.left + 20, toY(0) - 4);
+    ctx.textAlign = 'right';
+    ctx.fillText('Hyper', pad.left - 4, pad.top + 10);
+    ctx.fillText('Hypo', pad.left - 4, h - pad.bottom - 4);
+
+    // Protocol colors
+    const colors = { closeEyes: '#42a5f5', saccade: '#ffa726', tracking: '#ab47bc', prismSweep: '#66bb6a' };
+
+    // Plot points
+    trials.forEach(t => {
+      const x = toX(t.horizontalPrism), y = toY(t.verticalPrism);
+      ctx.fillStyle = colors[t.protocol] || '#6baaff';
+      ctx.beginPath();
+      if (t.phase === 'near') {
+        ctx.rect(x - 4, y - 4, 8, 8); ctx.fill();
+      } else {
+        ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+      }
+    });
+
+    // Correlation
+    const r = pearsonCorrelation(hs, vs);
+    ctx.fillStyle = '#9298a8'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText(`r = ${r.toFixed(3)} (n=${trials.length})`, w - pad.right, pad.top - 4);
+
+    // Legend
+    ctx.textAlign = 'left'; ctx.font = '9px sans-serif';
+    let lx = pad.left;
+    Object.entries(colors).forEach(([k, c]) => {
+      ctx.fillStyle = c; ctx.fillRect(lx, h - 10, 8, 8);
+      ctx.fillStyle = '#555b6e'; ctx.fillText(k, lx + 10, h - 3);
+      lx += ctx.measureText(k).width + 20;
+    });
+  }, [trials]);
+
+  return <canvas ref={canvasRef} width={400} height={300}
+    style={{ width: '100%', maxWidth: 400, borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)' }} />;
 }
 
 const thStyle = { textAlign: 'left', padding: '6px 8px', color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.04em' };
