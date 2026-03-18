@@ -5,11 +5,27 @@ import { Peer } from 'peerjs';
  * Clinician acts as host; display clients and controller connect as peers.
  */
 
-const CONNECT_TIMEOUT = 15000; // 15s timeout for connections
+const PEER_OPEN_TIMEOUT = 10000;
+const CONN_TIMEOUT = 10000;
+const MAX_RETRIES = 5;
+const RETRY_DELAY = 2000;
+
+/**
+ * Wait for a Peer to open, with timeout.
+ */
+function waitForPeerOpen(peer, timeout = PEER_OPEN_TIMEOUT) {
+  return new Promise((resolve, reject) => {
+    if (peer.open) { resolve(peer.id); return; }
+    const timer = setTimeout(() => {
+      reject(new Error('Peer open timed out'));
+    }, timeout);
+    peer.on('open', (id) => { clearTimeout(timer); resolve(id); });
+    peer.on('error', (err) => { clearTimeout(timer); reject(err); });
+  });
+}
 
 /**
  * Create a PeerJS host (clinician side).
- * Returns a promise that resolves with { peer, peerId, connections, broadcast, destroy }.
  */
 export function createHost(onPeerConnect, onPeerDisconnect, onMessage, customId = null) {
   return new Promise((resolve, reject) => {
@@ -17,13 +33,7 @@ export function createHost(onPeerConnect, onPeerDisconnect, onMessage, customId 
     const peer = peerId ? new Peer(peerId) : new Peer();
     const connections = new Map();
 
-    const timeout = setTimeout(() => {
-      peer.destroy();
-      reject(new Error('Timed out connecting to signaling server'));
-    }, CONNECT_TIMEOUT);
-
-    peer.on('open', (id) => {
-      clearTimeout(timeout);
+    waitForPeerOpen(peer).then((id) => {
       console.log('Host peer opened:', id);
 
       peer.on('connection', (conn) => {
@@ -76,11 +86,9 @@ export function createHost(onPeerConnect, onPeerDisconnect, onMessage, customId 
           peer.destroy();
         },
       });
-    });
-
-    peer.on('error', (err) => {
-      clearTimeout(timeout);
+    }).catch((err) => {
       console.error('Host peer error:', err);
+      peer.destroy();
       reject(err);
     });
   });
@@ -88,42 +96,66 @@ export function createHost(onPeerConnect, onPeerDisconnect, onMessage, customId 
 
 /**
  * Connect to a PeerJS host (display / controller side).
- * Includes timeout and status callbacks for UI feedback.
+ * Creates one Peer, then retries the connection to the host automatically.
  */
 export function connectToHost(hostPeerId, role, onMessage, onDisconnect, onStatus) {
-  return new Promise((resolve, reject) => {
-    onStatus?.('Creating peer...');
-    const peer = new Peer();
+  let destroyed = false;
+  let peer = null;
+  let activeConn = null;
 
-    const timeout = setTimeout(() => {
-      onStatus?.('Connection timed out');
-      peer.destroy();
-      reject(new Error('Connection timed out'));
-    }, CONNECT_TIMEOUT);
+  const result = {
+    send: (msg) => { if (activeConn?.open) activeConn.send(msg); },
+    destroy: () => {
+      destroyed = true;
+      activeConn?.close();
+      peer?.destroy();
+    },
+    connected: false,
+  };
 
-    peer.on('open', (myId) => {
-      onStatus?.(`Peer ready (${myId}), connecting to host...`);
-      console.log('Client peer open:', myId, '→ connecting to', hostPeerId);
+  function tryConnect(resolve, reject, attempt = 1) {
+    if (destroyed) return;
+
+    // Step 1: ensure we have an open peer
+    if (!peer || peer.destroyed || peer.disconnected) {
+      onStatus?.(`Creating peer... (attempt ${attempt}/${MAX_RETRIES})`);
+      peer = new Peer();
+
+      peer.on('error', (err) => {
+        console.error('Peer error:', err.type, err);
+        // peer-unavailable means the host ID doesn't exist
+        if (err.type === 'peer-unavailable') {
+          onStatus?.('Host not found — is the clinician console running?');
+        }
+      });
+    }
+
+    const startConnection = () => {
+      if (destroyed) return;
+      onStatus?.(`Connecting to host... (attempt ${attempt}/${MAX_RETRIES})`);
 
       const conn = peer.connect(hostPeerId);
+      if (!conn) {
+        retryOrFail(resolve, reject, attempt, 'Failed to create connection');
+        return;
+      }
+
+      const connTimeout = setTimeout(() => {
+        onStatus?.('Connection timed out');
+        conn.close();
+        retryOrFail(resolve, reject, attempt, 'Connection timed out');
+      }, CONN_TIMEOUT);
 
       conn.on('open', () => {
-        clearTimeout(timeout);
+        clearTimeout(connTimeout);
+        if (destroyed) { conn.close(); return; }
+
+        activeConn = conn;
+        result.connected = true;
         onStatus?.('Connected!');
         console.log('Connected to host:', hostPeerId);
         conn.send({ type: 'join', role });
-
-        resolve({
-          peer,
-          conn,
-          send: (msg) => {
-            if (conn.open) conn.send(msg);
-          },
-          destroy: () => {
-            conn.close();
-            peer.destroy();
-          },
-        });
+        resolve(result);
       });
 
       conn.on('data', (msg) => {
@@ -131,27 +163,53 @@ export function connectToHost(hostPeerId, role, onMessage, onDisconnect, onStatu
       });
 
       conn.on('close', () => {
+        if (destroyed) return;
+        result.connected = false;
+        activeConn = null;
         console.log('Disconnected from host');
         onDisconnect?.();
       });
 
       conn.on('error', (err) => {
-        clearTimeout(timeout);
+        clearTimeout(connTimeout);
         console.error('Connection error:', err);
-        onStatus?.(`Connection error: ${err.type || err.message || err}`);
-        reject(err);
+        retryOrFail(resolve, reject, attempt, err.message || 'Connection error');
       });
-    });
+    };
 
-    peer.on('error', (err) => {
-      clearTimeout(timeout);
-      console.error('Client peer error:', err);
-      onStatus?.(`Peer error: ${err.type || err.message || err}`);
-      reject(err);
-    });
+    if (peer.open) {
+      startConnection();
+    } else {
+      waitForPeerOpen(peer).then(() => {
+        onStatus?.(`Peer ready, connecting to host... (attempt ${attempt}/${MAX_RETRIES})`);
+        startConnection();
+      }).catch((err) => {
+        console.error('Peer open failed:', err);
+        // Destroy broken peer so next retry creates a fresh one
+        peer.destroy();
+        peer = null;
+        retryOrFail(resolve, reject, attempt, 'Signaling server unreachable');
+      });
+    }
+  }
 
-    peer.on('disconnected', () => {
-      onStatus?.('Disconnected from signaling server');
-    });
+  function retryOrFail(resolve, reject, attempt, reason) {
+    if (destroyed) return;
+    if (attempt >= MAX_RETRIES) {
+      onStatus?.(`Failed after ${MAX_RETRIES} attempts: ${reason}`);
+      reject(new Error(reason));
+      return;
+    }
+    const delay = RETRY_DELAY * attempt;
+    onStatus?.(`${reason} — retrying in ${delay / 1000}s... (${attempt}/${MAX_RETRIES})`);
+    setTimeout(() => tryConnect(resolve, reject, attempt + 1), delay);
+  }
+
+  const promise = new Promise((resolve, reject) => {
+    tryConnect(resolve, reject, 1);
   });
+
+  // Return the promise but also attach the destroy handle
+  promise._ctrl = result;
+  return promise;
 }

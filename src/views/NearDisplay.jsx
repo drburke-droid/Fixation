@@ -8,14 +8,16 @@ export default function NearDisplay() {
   const [state, setState] = useState(null);
   const [flashActive, setFlashActive] = useState(false);
   const [status, setStatus] = useState('Connecting...');
-  const [error, setError] = useState(null);
-  const connRef = useRef(null);
+  const [failed, setFailed] = useState(false);
+  const clientRef = useRef(null);
   const mountedRef = useRef(true);
 
-  const attemptConnect = useCallback(() => {
-    setError(null);
+  const doConnect = useCallback(() => {
+    clientRef.current?.destroy();
+    clientRef.current = null;
+    setState(null);
+    setFailed(false);
     setStatus('Connecting...');
-    connRef.current?.destroy();
 
     connectToHost(hostPeerId, 'near',
       (msg) => {
@@ -38,32 +40,32 @@ export default function NearDisplay() {
       () => {
         if (!mountedRef.current) return;
         setState(null);
-        setError('Disconnected. Click to retry.');
+        setStatus('Disconnected');
+        setFailed(true);
       },
-      (statusMsg) => {
-        if (mountedRef.current) setStatus(statusMsg);
-      },
+      (statusMsg) => { if (mountedRef.current) setStatus(statusMsg); },
     ).then(client => {
       if (!mountedRef.current) { client.destroy(); return; }
-      connRef.current = client;
+      clientRef.current = client;
       setStatus('Connected');
     }).catch(err => {
       if (!mountedRef.current) return;
-      setError(`${err?.message || err}. Click to retry.`);
+      setStatus(`Failed: ${err?.message || err}`);
+      setFailed(true);
     });
   }, [hostPeerId]);
 
   useEffect(() => {
     mountedRef.current = true;
-    attemptConnect();
+    doConnect();
     return () => {
       mountedRef.current = false;
-      connRef.current?.destroy();
+      clientRef.current?.destroy();
     };
-  }, [attemptConnect]);
+  }, [doConnect]);
 
   const handleClick = () => {
-    if (error) { attemptConnect(); return; }
+    if (failed) { doConnect(); return; }
     document.documentElement.requestFullscreen?.().catch(() => {});
   };
 
@@ -71,9 +73,9 @@ export default function NearDisplay() {
     return (
       <div className="display-fullscreen" onClick={handleClick}
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', cursor: 'pointer' }}>
-        <div style={{ color: '#8b949e', fontSize: '16px' }}>{status}</div>
-        {error && <div style={{ color: '#f85149', fontSize: '14px', marginTop: 8 }}>{error}</div>}
+        <div style={{ color: '#8b949e', fontSize: '14px' }}>{status}</div>
         <div style={{ color: '#484f58', fontSize: '12px', marginTop: 8 }}>Host: {hostPeerId}</div>
+        {failed && <div style={{ color: '#58a6ff', fontSize: '14px', marginTop: 16 }}>Click to retry</div>}
       </div>
     );
   }
