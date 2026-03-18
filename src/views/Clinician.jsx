@@ -174,11 +174,6 @@ export default function Clinician() {
     setSaccadeProgress(0);
   }, [eyesOpenTime]);
 
-  const handleCaptureTrial = useCallback(() => {
-    logPosition('capture');
-    doCapture(trialProtocol);
-  }, [doCapture, trialProtocol, logPosition]);
-
   // Log current position to positionLog
   const logPosition = useCallback((type) => {
     const s = sessionRef.current;
@@ -195,6 +190,11 @@ export default function Clinician() {
     s.positionLog = [...(s.positionLog || []), entry];
     sessionRef.current = s;
   }, [trialProtocol]);
+
+  const handleCaptureTrial = useCallback(() => {
+    logPosition('capture');
+    doCapture(trialProtocol);
+  }, [doCapture, trialProtocol, logPosition]);
 
   // Called when controller sends double-tap
   const handleDoubleTapCapture = useCallback(() => {
