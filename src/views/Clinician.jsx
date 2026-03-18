@@ -420,6 +420,31 @@ export default function Clinician() {
               <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>Mirror distance display</span>
             </label>
           </div>
+          <div style={{ marginBottom: 8, padding: '8px', background: 'var(--bg-tertiary)', borderRadius: 6 }}>
+            <label style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 6, display: 'block' }}>
+              Anti-bleed compensation: {session.config.antiBleedLevel}%
+            </label>
+            <input type="range" min="0" max="50" value={session.config.antiBleedLevel}
+              onChange={e => handleUpdateConfig({ antiBleedLevel: Number(e.target.value) })}
+              style={{ width: '100%' }} />
+            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+              Raises background luminance to mask filter bleed-through at near
+            </span>
+            <div className="field-row" style={{ marginTop: 6 }}>
+              <div>
+                <label>Red intensity: {session.config.redIntensity}%</label>
+                <input type="range" min="10" max="100" value={session.config.redIntensity}
+                  onChange={e => handleUpdateConfig({ redIntensity: Number(e.target.value) })}
+                  style={{ width: '100%' }} />
+              </div>
+              <div>
+                <label>Green intensity: {session.config.greenIntensity}%</label>
+                <input type="range" min="10" max="100" value={session.config.greenIntensity}
+                  onChange={e => handleUpdateConfig({ greenIntensity: Number(e.target.value) })}
+                  style={{ width: '100%' }} />
+              </div>
+            </div>
+          </div>
           <div className="field-row">
             <div>
               <label>Right Eye Sees</label>

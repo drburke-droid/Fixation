@@ -27,6 +27,9 @@ const defaultConfig = {
   backgroundColor: '#000000',
   redColor: '#FF0000',
   greenColor: '#00FF00',
+  redIntensity: 100,      // 0-100% target brightness
+  greenIntensity: 100,
+  antiBleedLevel: 0,      // 0-50: dim background fill of both colors to mask bleed-through
   mirrorDistance: true,
   displayPPI: 96,
   nearDisplayPPI: 132,

@@ -1,5 +1,5 @@
 import { useRef, useEffect, useCallback } from 'react';
-import { renderTargets } from '../lib/targets';
+import { renderTargets, drawAntiBleedBackground } from '../lib/targets';
 
 /**
  * Full-screen canvas for rendering dissociated targets and fixation lock.
@@ -22,6 +22,11 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
     // Clear
     ctx.fillStyle = state.config?.backgroundColor || '#000000';
     ctx.fillRect(0, 0, w, h);
+
+    // Anti-bleed background compensation — raises baseline luminance to mask filter bleed-through
+    if (state.config?.antiBleedLevel > 0) {
+      drawAntiBleedBackground(ctx, w, h, state.config);
+    }
 
     const phase = state.phase;
 

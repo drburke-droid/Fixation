@@ -94,11 +94,49 @@ export const targetPresets = {
  * Red lens on right eye → right eye sees green target.
  * Green lens on left eye → left eye sees red target.
  */
+/**
+ * Scale a hex color by an intensity percentage (0-100).
+ */
+function scaleColor(hex, intensity) {
+  const pct = Math.max(0, Math.min(100, intensity)) / 100;
+  const r = Math.round(parseInt(hex.slice(1, 3), 16) * pct);
+  const g = Math.round(parseInt(hex.slice(3, 5), 16) * pct);
+  const b = Math.round(parseInt(hex.slice(5, 7), 16) * pct);
+  return `rgb(${r},${g},${b})`;
+}
+
 export function getTargetColors(config) {
+  const redBase = config.redColor || '#FF0000';
+  const greenBase = config.greenColor || '#00FF00';
+  const redInt = config.redIntensity ?? 100;
+  const greenInt = config.greenIntensity ?? 100;
   return {
-    redTargetColor: config.redColor || '#FF0000',
-    greenTargetColor: config.greenColor || '#00FF00',
+    redTargetColor: scaleColor(redBase, redInt),
+    greenTargetColor: scaleColor(greenBase, greenInt),
   };
+}
+
+/**
+ * Draw anti-bleed background compensation.
+ * Fills the entire canvas with a dim version of both target colors to raise
+ * baseline luminance through each filter, masking bleed-through brightness.
+ */
+export function drawAntiBleedBackground(ctx, w, h, config) {
+  const level = config.antiBleedLevel || 0;
+  if (level <= 0) return;
+
+  const redBase = config.redColor || '#FF0000';
+  const greenBase = config.greenColor || '#00FF00';
+
+  // Draw dim red fill across entire screen
+  ctx.fillStyle = scaleColor(redBase, level);
+  ctx.fillRect(0, 0, w, h);
+
+  // Draw dim green fill on top (additive via lighter composite)
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = scaleColor(greenBase, level);
+  ctx.fillRect(0, 0, w, h);
+  ctx.globalCompositeOperation = 'source-over';
 }
 
 /**
