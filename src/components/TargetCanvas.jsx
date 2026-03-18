@@ -87,13 +87,19 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
         flashActive,
       });
     }
-    // Idle / setup / results
+    // Idle / waiting phases — show phase-appropriate status
     else {
-      // Show a standby screen
-      ctx.fillStyle = '#333';
-      ctx.font = '18px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('Waiting for session...', centerX, centerY);
+      ctx.fillStyle = '#555';
+      ctx.font = '16px sans-serif';
+
+      const messages = {
+        'setup': 'Connected — waiting for session to start',
+        'pairing': 'Connected — waiting for all devices',
+        'transition': 'Transitioning to near...',
+        'results': 'Session complete',
+      };
+      ctx.fillText(messages[phase] || 'Connected — standby', centerX, centerY);
     }
 
     animRef.current = requestAnimationFrame(draw);
