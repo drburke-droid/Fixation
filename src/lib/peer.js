@@ -5,27 +5,35 @@ import { Peer } from 'peerjs';
  * Clinician acts as host; display clients and controller connect as peers.
  */
 
+const CONNECT_TIMEOUT = 15000; // 15s timeout for connections
+
 /**
  * Create a PeerJS host (clinician side).
  * Returns a promise that resolves with { peer, peerId, connections, broadcast, destroy }.
  */
 export function createHost(onPeerConnect, onPeerDisconnect, onMessage, customId = null) {
   return new Promise((resolve, reject) => {
-    // Use custom ID prefixed with 'fdq-' for namespace, or let PeerJS auto-generate
     const peerId = customId ? `fdq-${customId}` : undefined;
     const peer = peerId ? new Peer(peerId) : new Peer();
-    const connections = new Map(); // role -> DataConnection
+    const connections = new Map();
+
+    const timeout = setTimeout(() => {
+      peer.destroy();
+      reject(new Error('Timed out connecting to signaling server'));
+    }, CONNECT_TIMEOUT);
 
     peer.on('open', (id) => {
+      clearTimeout(timeout);
       console.log('Host peer opened:', id);
 
       peer.on('connection', (conn) => {
+        console.log('Incoming connection from:', conn.peer);
+
         conn.on('open', () => {
-          console.log('Peer connected:', conn.peer);
+          console.log('Connection open with:', conn.peer);
         });
 
         conn.on('data', (msg) => {
-          // Handle join message to register role
           if (msg.type === 'join') {
             connections.set(msg.role, conn);
             conn._role = msg.role;
@@ -71,6 +79,7 @@ export function createHost(onPeerConnect, onPeerDisconnect, onMessage, customId 
     });
 
     peer.on('error', (err) => {
+      clearTimeout(timeout);
       console.error('Host peer error:', err);
       reject(err);
     });
@@ -79,18 +88,29 @@ export function createHost(onPeerConnect, onPeerDisconnect, onMessage, customId 
 
 /**
  * Connect to a PeerJS host (display / controller side).
- * Returns a promise that resolves with { peer, conn, send, destroy }.
+ * Includes timeout and status callbacks for UI feedback.
  */
-export function connectToHost(hostPeerId, role, onMessage, onDisconnect) {
+export function connectToHost(hostPeerId, role, onMessage, onDisconnect, onStatus) {
   return new Promise((resolve, reject) => {
+    onStatus?.('Creating peer...');
     const peer = new Peer();
 
-    peer.on('open', () => {
-      const conn = peer.connect(hostPeerId, { reliable: true });
+    const timeout = setTimeout(() => {
+      onStatus?.('Connection timed out');
+      peer.destroy();
+      reject(new Error('Connection timed out'));
+    }, CONNECT_TIMEOUT);
+
+    peer.on('open', (myId) => {
+      onStatus?.(`Peer ready (${myId}), connecting to host...`);
+      console.log('Client peer open:', myId, '→ connecting to', hostPeerId);
+
+      const conn = peer.connect(hostPeerId);
 
       conn.on('open', () => {
+        clearTimeout(timeout);
+        onStatus?.('Connected!');
         console.log('Connected to host:', hostPeerId);
-        // Announce our role
         conn.send({ type: 'join', role });
 
         resolve({
@@ -116,14 +136,22 @@ export function connectToHost(hostPeerId, role, onMessage, onDisconnect) {
       });
 
       conn.on('error', (err) => {
+        clearTimeout(timeout);
         console.error('Connection error:', err);
+        onStatus?.(`Connection error: ${err.type || err.message || err}`);
         reject(err);
       });
     });
 
     peer.on('error', (err) => {
+      clearTimeout(timeout);
       console.error('Client peer error:', err);
+      onStatus?.(`Peer error: ${err.type || err.message || err}`);
       reject(err);
+    });
+
+    peer.on('disconnected', () => {
+      onStatus?.('Disconnected from signaling server');
     });
   });
 }

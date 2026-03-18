@@ -14,32 +14,66 @@ const EMIT_INTERVAL = 30;
 export default function Controller() {
   const { sessionId: hostPeerId } = useParams();
   const [connected, setConnected] = useState(false);
+  const [status, setStatus] = useState('Initializing...');
+  const [error, setError] = useState(null);
   const [sensitivity, setSensitivity] = useState('normal');
   const connRef = useRef(null);
   const touchRef = useRef({ lastX: 0, lastY: 0, lastEmit: 0 });
+  const mountedRef = useRef(true);
 
-  useEffect(() => {
-    let destroyed = false;
+  const attemptConnect = useCallback(() => {
+    setConnected(false);
+    setError(null);
+    setStatus('Connecting...');
 
-    connectToHost(hostPeerId, 'controller',
+    // Destroy previous connection if any
+    connRef.current?.destroy();
+    connRef.current = null;
+
+    connectToHost(
+      hostPeerId,
+      'controller',
+      // onMessage
       (msg) => {
-        if (destroyed) return;
+        if (!mountedRef.current) return;
         if (msg.type === 'state-updated' && msg.state?.config) {
           setSensitivity(msg.state.config.movementSensitivity || 'normal');
         }
       },
-      () => { if (!destroyed) setConnected(false); }
+      // onDisconnect
+      () => {
+        if (!mountedRef.current) return;
+        setConnected(false);
+        setStatus('Disconnected from host');
+        setError('Connection lost. Tap to retry.');
+      },
+      // onStatus
+      (statusMsg) => {
+        if (!mountedRef.current) return;
+        setStatus(statusMsg);
+      },
     ).then(client => {
-      if (destroyed) { client.destroy(); return; }
+      if (!mountedRef.current) { client.destroy(); return; }
       connRef.current = client;
       setConnected(true);
-    }).catch(err => console.error('Failed to connect:', err));
+      setError(null);
+      setStatus('Connected');
+    }).catch(err => {
+      if (!mountedRef.current) return;
+      console.error('Failed to connect:', err);
+      setError(`Failed: ${err?.message || err}. Tap to retry.`);
+      setStatus('Not connected');
+    });
+  }, [hostPeerId]);
 
+  useEffect(() => {
+    mountedRef.current = true;
+    attemptConnect();
     return () => {
-      destroyed = true;
+      mountedRef.current = false;
       connRef.current?.destroy();
     };
-  }, [hostPeerId]);
+  }, [attemptConnect]);
 
   const computeStep = useCallback((dx, dy, elapsed) => {
     const sens = SENSITIVITY[sensitivity] || SENSITIVITY.normal;
@@ -56,16 +90,22 @@ export default function Controller() {
 
   const handleTouchStart = useCallback((e) => {
     e.preventDefault();
+    // If not connected and user taps, retry
+    if (!connected && error) {
+      attemptConnect();
+      return;
+    }
     const touch = e.touches[0];
     touchRef.current = {
       lastX: touch.clientX,
       lastY: touch.clientY,
       lastEmit: performance.now(),
     };
-  }, []);
+  }, [connected, error, attemptConnect]);
 
   const handleTouchMove = useCallback((e) => {
     e.preventDefault();
+    if (!connected) return;
     const now = performance.now();
     const ref = touchRef.current;
     if (now - ref.lastEmit < EMIT_INTERVAL) return;
@@ -87,7 +127,7 @@ export default function Controller() {
     ref.lastX = touch.clientX;
     ref.lastY = touch.clientY;
     ref.lastEmit = now;
-  }, [computeStep]);
+  }, [computeStep, connected]);
 
   const handleTouchEnd = useCallback((e) => {
     e.preventDefault();
@@ -110,11 +150,7 @@ export default function Controller() {
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
-      {!connected ? (
-        <div style={{ color: '#f85149', fontSize: '18px', textAlign: 'center', padding: '20px' }}>
-          Connecting to host...
-        </div>
-      ) : (
+      {connected ? (
         <>
           <div style={{ color: '#3fb950', fontSize: '16px', marginBottom: '20px', textAlign: 'center' }}>
             Connected
@@ -130,6 +166,25 @@ export default function Controller() {
             border: '1px dashed #21262d', borderRadius: '20px', pointerEvents: 'none',
           }} />
         </>
+      ) : (
+        <div style={{ textAlign: 'center', padding: '20px' }}>
+          <div style={{ color: '#8b949e', fontSize: '16px', marginBottom: '12px' }}>
+            {status}
+          </div>
+          {error && (
+            <div style={{ color: '#f85149', fontSize: '14px', marginBottom: '16px' }}>
+              {error}
+            </div>
+          )}
+          <div style={{ color: '#484f58', fontSize: '12px', marginTop: '8px' }}>
+            Host: {hostPeerId}
+          </div>
+          {error && (
+            <div style={{ color: '#58a6ff', fontSize: '14px', marginTop: '20px' }}>
+              Tap anywhere to retry
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
