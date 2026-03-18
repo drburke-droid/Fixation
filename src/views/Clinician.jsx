@@ -6,7 +6,7 @@ import {
   resetTarget, updateConfig, updateSuppression, updateCalibration,
   captureTrial,
 } from '../lib/sessionStore';
-import { computeTrialMetrics, computeTrialStats, generateEMRSummary } from '../lib/measurement';
+import { computeTrialMetrics, computeTrialStats, generateEMRSummary, getPrismLabels, formatPrism } from '../lib/measurement';
 import { renderTargets } from '../lib/targets';
 
 const PHASES = [
@@ -236,6 +236,11 @@ export default function Clinician() {
     const ppi = isNear ? session.config.nearDisplayPPI : session.config.displayPPI;
     const dist = isNear ? session.config.nearDistanceMm : session.config.distanceOpticalDistanceMm;
     return computeTrialMetrics(session.targets.movableX, session.targets.movableY, ppi, dist);
+  }, [session]);
+
+  const liveLabels = useMemo(() => {
+    if (!session) return null;
+    return getPrismLabels(session.targets.movableX, session.targets.movableY, session.config, session.targets);
   }, [session]);
 
   // --- Computed stats ---
@@ -757,12 +762,16 @@ export default function Clinician() {
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Horizontal</div>
               <div style={{
-                fontSize: '32px', fontWeight: 'bold', fontFamily: 'monospace',
+                fontSize: '30px', fontWeight: 'bold', fontFamily: 'monospace',
                 color: livePrism ? (Math.abs(livePrism.horizontalPrism) < 0.1 ? 'var(--success)' : 'var(--text-primary)') : 'var(--text-muted)',
               }}>
-                {livePrism ? livePrism.horizontalPrism.toFixed(2) : '—'}
+                {livePrism ? formatPrism(livePrism.horizontalPrism, liveLabels?.hBase || '') : '—'}
               </div>
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>prism diopters</div>
+              {liveLabels?.hType && (
+                <div style={{ fontSize: '12px', fontWeight: 600, color: liveLabels.hType.includes('Eso') ? '#ff9800' : '#2196f3' }}>
+                  {liveLabels.hType}
+                </div>
+              )}
               <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
                 {livePrism ? `${livePrism.xPx.toFixed(1)} px / ${livePrism.xArcMin.toFixed(1)} arcmin` : ''}
               </div>
@@ -770,12 +779,16 @@ export default function Clinician() {
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Vertical</div>
               <div style={{
-                fontSize: '32px', fontWeight: 'bold', fontFamily: 'monospace',
+                fontSize: '30px', fontWeight: 'bold', fontFamily: 'monospace',
                 color: livePrism ? (Math.abs(livePrism.verticalPrism) < 0.1 ? 'var(--success)' : 'var(--text-primary)') : 'var(--text-muted)',
               }}>
-                {livePrism ? livePrism.verticalPrism.toFixed(2) : '—'}
+                {livePrism ? formatPrism(livePrism.verticalPrism, liveLabels?.vBase || '') : '—'}
               </div>
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>prism diopters</div>
+              {liveLabels?.vType && (
+                <div style={{ fontSize: '12px', fontWeight: 600, color: '#ab47bc' }}>
+                  {liveLabels.vType}
+                </div>
+              )}
               <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
                 {livePrism ? `${livePrism.yPx.toFixed(1)} px / ${livePrism.yArcMin.toFixed(1)} arcmin` : ''}
               </div>
@@ -784,6 +797,11 @@ export default function Clinician() {
           {livePrism && (
             <div style={{ textAlign: 'center', marginTop: 8, fontSize: '12px', color: 'var(--text-secondary)' }}>
               Vector: {livePrism.vectorPrism.toFixed(2)} pd
+              {liveLabels?.movableEye && (
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginLeft: 8 }}>
+                  (movable eye: {liveLabels.movableEye})
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -814,24 +832,33 @@ export default function Clinician() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                    {['#','Phase','H (pd)','V (pd)','Vector','X (px)','Y (px)','Time (s)'].map(h => (
+                    {['#','Phase','Horizontal','Vertical','Vector','Type','Time'].map(h => (
                       <th key={h} style={thStyle}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {session.trials.map((t, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={tdStyle}>{t.trialNumber}</td>
-                      <td style={tdStyle}>{t.phase}</td>
-                      <td style={{ ...tdStyle, fontWeight: 'bold' }}>{t.horizontalPrism.toFixed(2)}</td>
-                      <td style={{ ...tdStyle, fontWeight: 'bold' }}>{t.verticalPrism.toFixed(2)}</td>
-                      <td style={tdStyle}>{t.vectorPrism.toFixed(2)}</td>
-                      <td style={tdStyle}>{t.xPx}</td>
-                      <td style={tdStyle}>{t.yPx}</td>
-                      <td style={tdStyle}>{t.timeToAlignMs ? (t.timeToAlignMs / 1000).toFixed(1) : '—'}</td>
-                    </tr>
-                  ))}
+                  {session.trials.map((t, i) => {
+                    const labels = getPrismLabels(t.xPx, t.yPx, session.config, session.targets);
+                    return (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={tdStyle}>{t.trialNumber}</td>
+                        <td style={tdStyle}>{t.phase}</td>
+                        <td style={{ ...tdStyle, fontWeight: 'bold' }}>
+                          {formatPrism(t.horizontalPrism, labels.hBase)}
+                        </td>
+                        <td style={{ ...tdStyle, fontWeight: 'bold' }}>
+                          {formatPrism(t.verticalPrism, labels.vBase)}
+                        </td>
+                        <td style={tdStyle}>{t.vectorPrism.toFixed(2)} pd</td>
+                        <td style={{ ...tdStyle, fontSize: '10px' }}>
+                          {labels.hType && <div style={{ color: labels.hType.includes('Eso') ? '#ff9800' : '#2196f3' }}>{labels.hType}</div>}
+                          {labels.vType && <div style={{ color: '#ab47bc' }}>{labels.vType}</div>}
+                        </td>
+                        <td style={tdStyle}>{t.timeToAlignMs ? (t.timeToAlignMs / 1000).toFixed(1) + 's' : '—'}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

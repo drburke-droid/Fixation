@@ -73,6 +73,69 @@ export function computeTrialMetrics(xPx, yPx, ppi, distanceMm) {
   };
 }
 
+/**
+ * Determine which eye controls the movable target.
+ * Default: red target seen by left eye (green lens), movableIsRed = true → left eye.
+ */
+export function getMovableEye(config, targets) {
+  if (targets.movableIsRed) {
+    return config.leftEyeSees === 'red' ? 'left' : 'right';
+  } else {
+    return config.leftEyeSees === 'green' ? 'left' : 'right';
+  }
+}
+
+/**
+ * Get clinical prism direction labels from displacement.
+ *
+ * Sign convention (when movable eye = left, default setup):
+ *  +X = patient moved target rightward = eso FD (crossed) = correcting prism Base-Out
+ *  -X = patient moved target leftward  = exo FD (uncrossed) = correcting prism Base-In
+ *  -Y = patient moved target upward    = L hyper = correcting prism Base-Down OL
+ *  +Y = patient moved target downward  = L hypo (R hyper) = correcting prism Base-Up OL
+ *
+ * When movable eye = right, horizontal directions flip.
+ */
+export function getPrismLabels(xPx, yPx, config, targets) {
+  const movableEye = getMovableEye(config, targets);
+  const isLeft = movableEye === 'left';
+
+  // Horizontal
+  let hBase = '', hType = '';
+  if (Math.abs(xPx) > 0.01) {
+    const esoSign = isLeft ? 1 : -1; // +X = eso when left eye, -X = eso when right eye
+    if (xPx * esoSign > 0) {
+      hType = 'Eso (crossed)';
+      hBase = 'BO';
+    } else {
+      hType = 'Exo (uncrossed)';
+      hBase = 'BI';
+    }
+  }
+
+  // Vertical
+  let vBase = '', vType = '';
+  if (Math.abs(yPx) > 0.01) {
+    const eyeLabel = isLeft ? 'L' : 'R';
+    // -Y (up on screen) = movable eye hyper
+    if (yPx < 0) {
+      vType = `${eyeLabel} Hyper`;
+      vBase = `BD O${eyeLabel[0]}`;
+    } else {
+      vType = `${eyeLabel} Hypo`;
+      vBase = `BU O${eyeLabel[0]}`;
+    }
+  }
+
+  return { hBase, hType, vBase, vType, movableEye };
+}
+
+/** Format a prism value with direction label */
+export function formatPrism(value, baseLabel) {
+  if (Math.abs(value) < 0.01) return '0.00';
+  return `${Math.abs(value).toFixed(2)} ${baseLabel}`;
+}
+
 /** Compute statistics across multiple trials */
 export function computeTrialStats(trials) {
   if (!trials || trials.length === 0) return null;
