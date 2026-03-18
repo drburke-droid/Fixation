@@ -124,10 +124,19 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
     return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
   }, [draw]);
 
+  // Mirror the canvas horizontally for distance display (viewed through mirror)
+  const mirrored = displayType === 'distance' && state?.config?.mirrorDistance !== false;
+
   return (
     <canvas
       ref={canvasRef}
-      style={{ display: 'block', width: '100vw', height: '100vh', background: '#000' }}
+      style={{
+        display: 'block',
+        width: '100vw',
+        height: '100vh',
+        background: '#000',
+        transform: mirrored ? 'scaleX(-1)' : undefined,
+      }}
     />
   );
 }

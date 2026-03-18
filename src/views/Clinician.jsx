@@ -413,6 +413,13 @@ export default function Clinician() {
                 style={{ width: '100%' }} />
             </div>
           </div>
+          <div style={{ marginBottom: 8 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+              <input type="checkbox" checked={session.config.mirrorDistance}
+                onChange={e => handleUpdateConfig({ mirrorDistance: e.target.checked })} />
+              <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>Mirror distance display</span>
+            </label>
+          </div>
           <div className="field-row">
             <div>
               <label>Right Eye Sees</label>

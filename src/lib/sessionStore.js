@@ -27,6 +27,7 @@ const defaultConfig = {
   backgroundColor: '#000000',
   redColor: '#FF0000',
   greenColor: '#00FF00',
+  mirrorDistance: true,
   displayPPI: 96,
   nearDisplayPPI: 132,
   displayWidthMm: null,
