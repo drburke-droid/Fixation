@@ -9,6 +9,7 @@ import {
 import {
   computeTrialMetrics, computeTrialStats, generateEMRSummary, getPrismLabels, formatPrism,
   prismDioptersToPx, computeFDCurve, analyzeTrackingTrajectory, analyzeRecoveryDynamics, pearsonCorrelation,
+  extractPhaseMetrics, smoothPositionData,
 } from '../lib/measurement';
 import { renderTargets } from '../lib/targets';
 
@@ -28,33 +29,33 @@ const PHASES = [
 
 const LOCK_MODES = ['always', 'pulse', 'flash', 'off'];
 
-// Auto protocol step definitions
+// Auto protocol step definitions — all timer-based, continuous recording throughout
 const AUTO_STEPS = [
   { id: 'welcome', dur: 5000, msg: 'Welcome to the\nFixation Disparity Assessment', red: false, green: false, lock: false, move: false },
   { id: 'intro-left', dur: 4000, msg: 'Your left eye sees this target', red: true, green: false, lock: false, move: false },
   { id: 'intro-right', dur: 4000, msg: 'Your right eye sees this target', red: false, green: true, lock: false, move: false },
   { id: 'intro-lock', dur: 4000, msg: 'Both eyes see\nthis fixation target', red: false, green: false, lock: true, move: false },
   { id: 'intro-both', dur: 4000, msg: 'Now you see all targets together', red: true, green: true, lock: true, move: false },
-  { id: 'intro-move', dur: 12000, msg: 'Drag your finger on your phone\nto move the target.\nTry putting the cross inside the circle.', red: true, green: true, lock: true, move: true },
+  { id: 'intro-move', dur: 15000, msg: 'Drag your finger on your phone\nto move the target.\nTry putting the cross inside the circle.', red: true, green: true, lock: true, move: true },
   { id: 'intro-blink', dur: 6000, msg: 'If you lose a target, try blinking.\nIf that doesn\'t work, say "I lost it".\n\nThe test will now begin.', red: true, green: true, lock: true, move: false },
-  // Close eyes trials (3x)
-  { id: 'ce-instruct', dur: 4000, msg: 'Close your eyes now.', red: false, green: false, lock: false, move: false, marker: 'Close Eyes' },
-  { id: 'ce-open-1', dur: 0, msg: 'Open your eyes.\nAlign the targets.\nDouble-tap when aligned.', red: true, green: true, lock: true, move: true, waitTap: true, record: true, marker: 'CE Trial 1' },
-  { id: 'ce-close-2', dur: 4000, msg: 'Close your eyes.', red: false, green: false, lock: false, move: false, reset: true },
-  { id: 'ce-open-2', dur: 0, msg: 'Open your eyes.\nAlign and double-tap.', red: true, green: true, lock: true, move: true, waitTap: true, record: true, marker: 'CE Trial 2' },
-  { id: 'ce-close-3', dur: 4000, msg: 'Close your eyes.', red: false, green: false, lock: false, move: false, reset: true },
-  { id: 'ce-open-3', dur: 0, msg: 'Open your eyes.\nAlign and double-tap.', red: true, green: true, lock: true, move: true, waitTap: true, record: true, marker: 'CE Trial 3' },
-  // Saccade trials (3x)
-  { id: 'sac-instruct', dur: 4000, msg: 'Follow the jumping target\nwith your eyes.', red: false, green: false, lock: true, move: false, reset: true, marker: 'Saccade' },
-  { id: 'sac-run-1', dur: 0, msg: '', red: false, green: false, lock: true, move: false, runSaccade: true },
-  { id: 'sac-align-1', dur: 0, msg: 'Align the targets.\nDouble-tap when aligned.', red: true, green: true, lock: true, move: true, waitTap: true, record: true, marker: 'Sac Trial 1' },
-  { id: 'sac-run-2', dur: 0, msg: 'Follow the target.', red: false, green: false, lock: true, move: false, runSaccade: true, reset: true },
-  { id: 'sac-align-2', dur: 0, msg: 'Align and double-tap.', red: true, green: true, lock: true, move: true, waitTap: true, record: true, marker: 'Sac Trial 2' },
-  { id: 'sac-run-3', dur: 0, msg: 'Follow the target.', red: false, green: false, lock: true, move: false, runSaccade: true, reset: true },
-  { id: 'sac-align-3', dur: 0, msg: 'Align and double-tap.', red: true, green: true, lock: true, move: true, waitTap: true, record: true, marker: 'Sac Trial 3' },
-  // Tracking
-  { id: 'track-instruct', dur: 4000, msg: 'Keep the targets aligned.\nMake small adjustments as needed.', red: true, green: true, lock: true, move: true, reset: true, marker: 'Tracking' },
-  { id: 'track-run', dur: 30000, msg: 'Keep them aligned...', red: true, green: true, lock: true, move: true, record: true },
+  // Close eyes sequence (3x — targets hidden during close, 5s close, 10s align)
+  { id: 'ce-close-1', dur: 5000, msg: 'Close your eyes now.', red: false, green: false, lock: false, move: false, reset: true, marker: 'Eyes Closed 1' },
+  { id: 'ce-open-1', dur: 10000, msg: 'Open your eyes.\nAlign the targets.', red: true, green: true, lock: true, move: true, record: true, marker: 'Eyes Open 1' },
+  { id: 'ce-close-2', dur: 5000, msg: 'Close your eyes.', red: false, green: false, lock: false, move: false, reset: true, marker: 'Eyes Closed 2' },
+  { id: 'ce-open-2', dur: 10000, msg: 'Open your eyes.\nAlign the targets.', red: true, green: true, lock: true, move: true, record: true, marker: 'Eyes Open 2' },
+  { id: 'ce-close-3', dur: 5000, msg: 'Close your eyes.', red: false, green: false, lock: false, move: false, reset: true, marker: 'Eyes Closed 3' },
+  { id: 'ce-open-3', dur: 10000, msg: 'Open your eyes.\nAlign the targets.', red: true, green: true, lock: true, move: true, record: true, marker: 'Eyes Open 3' },
+  // Saccade sequence (3x — saccade, then 10s align)
+  { id: 'sac-instruct', dur: 3000, msg: 'Follow the jumping target\nwith your eyes.', red: false, green: false, lock: true, move: false, reset: true, marker: 'Saccade Intro' },
+  { id: 'sac-run-1', dur: 0, msg: '', red: false, green: false, lock: true, move: false, runSaccade: true, marker: 'Saccade 1' },
+  { id: 'sac-align-1', dur: 10000, msg: 'Align the targets.', red: true, green: true, lock: true, move: true, record: true, marker: 'Recovery 1' },
+  { id: 'sac-run-2', dur: 0, msg: '', red: false, green: false, lock: true, move: false, runSaccade: true, reset: true, marker: 'Saccade 2' },
+  { id: 'sac-align-2', dur: 10000, msg: 'Align the targets.', red: true, green: true, lock: true, move: true, record: true, marker: 'Recovery 2' },
+  { id: 'sac-run-3', dur: 0, msg: '', red: false, green: false, lock: true, move: false, runSaccade: true, reset: true, marker: 'Saccade 3' },
+  { id: 'sac-align-3', dur: 10000, msg: 'Align the targets.', red: true, green: true, lock: true, move: true, record: true, marker: 'Recovery 3' },
+  // Continuous tracking (30s with lock, 30s without)
+  { id: 'track-lock', dur: 30000, msg: 'Keep the targets aligned.', red: true, green: true, lock: true, move: true, reset: true, record: true, marker: 'Tracking (lock on)' },
+  { id: 'track-nolock', dur: 30000, msg: 'Keep the targets aligned.\nFixation target will disappear.', red: true, green: true, lock: false, move: true, record: true, marker: 'Tracking (lock off)' },
   // Complete
   { id: 'complete', dur: 0, msg: 'Test complete.\nThank you.', red: false, green: false, lock: false, move: false, marker: 'Complete' },
 ];
@@ -238,9 +239,6 @@ export default function Clinician() {
 
   // Called when controller sends double-tap
   const handleDoubleTapCapture = useCallback(() => {
-    // Check auto protocol first
-    if (autoDoubleTapRef.current?.()) return;
-
     if (trialState === 'adjusting') {
       logPosition('tap');
       doCapture(trialProtocol);
@@ -293,10 +291,11 @@ export default function Clinician() {
   }, []);
 
   // ===== AUTO PROTOCOL ENGINE =====
+  // Fully timer-based — continuous 30fps recording, no double-tap needed
   const autoAdvance = useCallback((stepIdx) => {
     const s = sessionRef.current;
     if (!s || stepIdx >= AUTO_STEPS.length) {
-      // Protocol complete
+      // Protocol complete — stop recording, update state
       if (autoRecordRef.current) { clearInterval(autoRecordRef.current); autoRecordRef.current = null; }
       const fin = { ...s, autoProtocol: { ...s.autoProtocol, active: false, message: '', stepId: 'done' } };
       sessionRef.current = fin;
@@ -337,7 +336,7 @@ export default function Clinician() {
     setSession({ ...next });
     hostRef.current?.broadcast({ type: 'state-updated', state: next });
 
-    // Start recording if needed
+    // Start/stop continuous recording based on step
     if (step.record && !autoRecordRef.current) {
       autoRecordRef.current = setInterval(() => {
         const rs = sessionRef.current;
@@ -354,7 +353,7 @@ export default function Clinician() {
       autoRecordRef.current = null;
     }
 
-    // Handle saccade steps
+    // Handle saccade steps — run sequence then auto-advance
     if (step.runSaccade) {
       const cfg = s.config;
       hostRef.current?.broadcast({
@@ -366,17 +365,11 @@ export default function Clinician() {
       return;
     }
 
-    // Handle wait-for-tap steps (advance happens via double-tap handler)
-    if (step.waitTap) {
-      // Don't set timer — wait for double-tap
-      return;
-    }
-
-    // Timed step
+    // All other steps advance on timer
     if (step.dur > 0) {
       autoTimerRef.current = setTimeout(() => autoAdvance(stepIdx + 1), step.dur);
     }
-    // dur === 0 and no waitTap/saccade means stay (manual advance or protocol end)
+    // dur === 0 means hold (protocol end)
   }, []);
 
   const handleStartAutoProtocol = useCallback(() => {
@@ -410,31 +403,6 @@ export default function Clinician() {
     }
     setAutoRunning(false);
   }, []);
-
-  // Handle double-tap during auto protocol — advance to next step
-  const autoDoubleTapRef = useRef(null);
-  autoDoubleTapRef.current = () => {
-    if (!autoRunning) return false;
-    const s = sessionRef.current;
-    if (!s?.autoProtocol?.active) return false;
-    const stepIdx = s.autoProtocol.stepIndex;
-    const step = AUTO_STEPS[stepIdx];
-    if (!step?.waitTap) return false;
-
-    // Log the tap capture
-    const phase = s.phase === 'near-align' ? 'near' : 'distance';
-    s.positionLog = [...(s.positionLog || []), {
-      t: Date.now(), x: s.targets.movableX, y: s.targets.movableY,
-      protocol: 'auto', phase, type: 'tap',
-    }];
-    // Reset targets for next step
-    s.targets = { ...s.targets, movableX: 0, movableY: 0 };
-    sessionRef.current = s;
-
-    // Advance
-    autoAdvance(stepIdx + 1);
-    return true;
-  };
 
   const handleNewTrial = useCallback((protocol) => {
     setTrialProtocol(protocol);
@@ -1430,6 +1398,14 @@ export default function Clinician() {
           </div>
         )}
 
+        {/* Phase Analysis — extracted from continuous signal */}
+        {session.autoProtocol?.phaseMarkers?.length > 0 && session.positionLog?.length > 10 && (
+          <div className="panel">
+            <h3>Phase Analysis (from continuous signal)</h3>
+            <PhaseMetricsTable positionLog={session.positionLog} phaseMarkers={session.autoProtocol.phaseMarkers} config={session.config} />
+          </div>
+        )}
+
         {/* FD Curve (Prism Sweep) */}
         {session.prismSweepResults?.length >= 2 && (
           <div className="panel">
@@ -1665,6 +1641,50 @@ function PositionGraph({ positionLog, trials, config, targets }) {
 
   return <canvas ref={canvasRef} width={600} height={200}
     style={{ width: '100%', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)', boxShadow: 'inset 0 1px 4px rgba(0,0,0,0.3)' }} />;
+}
+
+/** Phase metrics table — automatic extraction from continuous signal */
+function PhaseMetricsTable({ positionLog, phaseMarkers, config }) {
+  const metrics = useMemo(() => extractPhaseMetrics(positionLog, phaseMarkers), [positionLog, phaseMarkers]);
+  if (!metrics.length) return null;
+
+  const isNear = false; // TODO: detect from phase
+  const ppi = isNear ? config.nearDisplayPPI : config.displayPPI;
+  const dist = isNear ? config.nearDistanceMm : config.distanceOpticalDistanceMm;
+
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', fontSize: '11px' }}>
+        <thead>
+          <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            {['Phase', 'Initial H', 'Settled H', 'Settled V', 'Settle Time', 'Var H', 'Var V'].map(h => (
+              <th key={h} style={thStyle}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {metrics.filter(m => m.samples > 5).map((m, i) => {
+            const initH = computeTrialMetrics(m.initialX, m.initialY, ppi, dist);
+            const settH = computeTrialMetrics(m.settledX, m.settledY, ppi, dist);
+            return (
+              <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                <td style={{ ...tdStyle, fontSize: '10px', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.label}</td>
+                <td style={{ ...tdStyle, fontWeight: 600 }}>{initH.horizontalPrism.toFixed(2)} pd</td>
+                <td style={{ ...tdStyle, fontWeight: 600 }}>{settH.horizontalPrism.toFixed(2)} pd</td>
+                <td style={tdStyle}>{settH.verticalPrism.toFixed(2)} pd</td>
+                <td style={tdStyle}>{m.timeToSettleS}s</td>
+                <td style={tdStyle}>{m.settledVarX.toFixed(1)} px</td>
+                <td style={tdStyle}>{m.settledVarY.toFixed(1)} px</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <p style={{ fontSize: '9px', color: 'var(--text-muted)', marginTop: 6 }}>
+        Initial H = fixation disparity at phase onset. Settled = after patient aligned. Var = stability of settled position.
+      </p>
+    </div>
+  );
 }
 
 /** Protocol Timeline — H and V position over time with phase annotations */

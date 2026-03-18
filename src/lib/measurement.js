@@ -411,6 +411,97 @@ export function pearsonCorrelation(xs, ys) {
   return denom > 0 ? round4(num / denom) : 0;
 }
 
+// ============================================================
+// Post-hoc Analysis: Extract metrics from continuous signal
+// ============================================================
+
+/**
+ * Analyze a continuous position signal within a time window.
+ * Extracts: initial offset, settled position, time to settle, variability.
+ */
+export function analyzeWindow(points, windowStartMs, windowEndMs) {
+  const pts = points.filter(p => p.t >= windowStartMs && p.t <= windowEndMs);
+  if (pts.length < 5) return null;
+
+  const xs = pts.map(p => p.x);
+  const ys = pts.map(p => p.y);
+  const duration = (pts[pts.length - 1].t - pts[0].t) / 1000;
+
+  // Initial position (mean of first 5 samples)
+  const initX = mean(xs.slice(0, Math.min(5, xs.length)));
+  const initY = mean(ys.slice(0, Math.min(5, ys.length)));
+
+  // Settled position (mean of last 20% of samples)
+  const tail = Math.max(3, Math.floor(xs.length * 0.2));
+  const settledX = mean(xs.slice(-tail));
+  const settledY = mean(ys.slice(-tail));
+
+  // Variability of settled region
+  const settledVarX = std(xs.slice(-tail));
+  const settledVarY = std(ys.slice(-tail));
+
+  // Time to settle: first time the signal stays within 3px of settled for 1s
+  let timeToSettle = duration;
+  const threshold = 3;
+  for (let i = 0; i < pts.length; i++) {
+    const dist = Math.sqrt((pts[i].x - settledX) ** 2 + (pts[i].y - settledY) ** 2);
+    if (dist < threshold) {
+      let stable = true;
+      for (let j = i; j < pts.length && (pts[j].t - pts[i].t) < 1000; j++) {
+        if (Math.sqrt((pts[j].x - settledX) ** 2 + (pts[j].y - settledY) ** 2) >= threshold) {
+          stable = false; break;
+        }
+      }
+      if (stable) { timeToSettle = round4((pts[i].t - pts[0].t) / 1000); break; }
+    }
+  }
+
+  return {
+    samples: pts.length,
+    durationS: round4(duration),
+    initialX: round4(initX),
+    initialY: round4(initY),
+    settledX: round4(settledX),
+    settledY: round4(settledY),
+    settledVarX: round4(settledVarX),
+    settledVarY: round4(settledVarY),
+    timeToSettleS: timeToSettle,
+  };
+}
+
+/**
+ * Extract per-phase metrics from an auto protocol recording.
+ * Returns array of { label, analysis } for each phase marker.
+ */
+export function extractPhaseMetrics(positionLog, phaseMarkers) {
+  if (!positionLog?.length || !phaseMarkers?.length) return [];
+
+  const results = [];
+  for (let i = 0; i < phaseMarkers.length; i++) {
+    const start = phaseMarkers[i].t;
+    const end = i + 1 < phaseMarkers.length ? phaseMarkers[i + 1].t : positionLog[positionLog.length - 1]?.t || start;
+    const analysis = analyzeWindow(positionLog, start, end);
+    if (analysis) {
+      results.push({ label: phaseMarkers[i].label, start, end, ...analysis });
+    }
+  }
+  return results;
+}
+
+/**
+ * Apply simple smoothing (moving average) to position data.
+ */
+export function smoothPositionData(points, windowSize = 5) {
+  if (points.length < windowSize) return points;
+  const half = Math.floor(windowSize / 2);
+  return points.map((p, i) => {
+    const start = Math.max(0, i - half);
+    const end = Math.min(points.length, i + half + 1);
+    const slice = points.slice(start, end);
+    return { ...p, x: mean(slice.map(s => s.x)), y: mean(slice.map(s => s.y)) };
+  });
+}
+
 // --- Utility functions ---
 
 function mean(arr) {
