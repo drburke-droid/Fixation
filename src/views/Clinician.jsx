@@ -28,6 +28,37 @@ const PHASES = [
 
 const LOCK_MODES = ['always', 'pulse', 'flash', 'off'];
 
+// Auto protocol step definitions
+const AUTO_STEPS = [
+  { id: 'welcome', dur: 5000, msg: 'Welcome to the\nFixation Disparity Assessment', red: false, green: false, lock: false, move: false },
+  { id: 'intro-left', dur: 4000, msg: 'Your left eye sees this target', red: true, green: false, lock: false, move: false },
+  { id: 'intro-right', dur: 4000, msg: 'Your right eye sees this target', red: false, green: true, lock: false, move: false },
+  { id: 'intro-lock', dur: 4000, msg: 'Both eyes see\nthis fixation target', red: false, green: false, lock: true, move: false },
+  { id: 'intro-both', dur: 4000, msg: 'Now you see all targets together', red: true, green: true, lock: true, move: false },
+  { id: 'intro-move', dur: 12000, msg: 'Drag your finger on your phone\nto move the target.\nTry putting the cross inside the circle.', red: true, green: true, lock: true, move: true },
+  { id: 'intro-blink', dur: 6000, msg: 'If you lose a target, try blinking.\nIf that doesn\'t work, say "I lost it".\n\nThe test will now begin.', red: true, green: true, lock: true, move: false },
+  // Close eyes trials (3x)
+  { id: 'ce-instruct', dur: 4000, msg: 'Close your eyes now.', red: false, green: false, lock: false, move: false, marker: 'Close Eyes' },
+  { id: 'ce-open-1', dur: 0, msg: 'Open your eyes.\nAlign the targets.\nDouble-tap when aligned.', red: true, green: true, lock: true, move: true, waitTap: true, record: true, marker: 'CE Trial 1' },
+  { id: 'ce-close-2', dur: 4000, msg: 'Close your eyes.', red: false, green: false, lock: false, move: false, reset: true },
+  { id: 'ce-open-2', dur: 0, msg: 'Open your eyes.\nAlign and double-tap.', red: true, green: true, lock: true, move: true, waitTap: true, record: true, marker: 'CE Trial 2' },
+  { id: 'ce-close-3', dur: 4000, msg: 'Close your eyes.', red: false, green: false, lock: false, move: false, reset: true },
+  { id: 'ce-open-3', dur: 0, msg: 'Open your eyes.\nAlign and double-tap.', red: true, green: true, lock: true, move: true, waitTap: true, record: true, marker: 'CE Trial 3' },
+  // Saccade trials (3x)
+  { id: 'sac-instruct', dur: 4000, msg: 'Follow the jumping target\nwith your eyes.', red: false, green: false, lock: true, move: false, reset: true, marker: 'Saccade' },
+  { id: 'sac-run-1', dur: 0, msg: '', red: false, green: false, lock: true, move: false, runSaccade: true },
+  { id: 'sac-align-1', dur: 0, msg: 'Align the targets.\nDouble-tap when aligned.', red: true, green: true, lock: true, move: true, waitTap: true, record: true, marker: 'Sac Trial 1' },
+  { id: 'sac-run-2', dur: 0, msg: 'Follow the target.', red: false, green: false, lock: true, move: false, runSaccade: true, reset: true },
+  { id: 'sac-align-2', dur: 0, msg: 'Align and double-tap.', red: true, green: true, lock: true, move: true, waitTap: true, record: true, marker: 'Sac Trial 2' },
+  { id: 'sac-run-3', dur: 0, msg: 'Follow the target.', red: false, green: false, lock: true, move: false, runSaccade: true, reset: true },
+  { id: 'sac-align-3', dur: 0, msg: 'Align and double-tap.', red: true, green: true, lock: true, move: true, waitTap: true, record: true, marker: 'Sac Trial 3' },
+  // Tracking
+  { id: 'track-instruct', dur: 4000, msg: 'Keep the targets aligned.\nMake small adjustments as needed.', red: true, green: true, lock: true, move: true, reset: true, marker: 'Tracking' },
+  { id: 'track-run', dur: 30000, msg: 'Keep them aligned...', red: true, green: true, lock: true, move: true, record: true },
+  // Complete
+  { id: 'complete', dur: 0, msg: 'Test complete.\nThank you.', red: false, green: false, lock: false, move: false, marker: 'Complete' },
+];
+
 export default function Clinician() {
   const sessionRef = useRef(null);
   const [session, setSession] = useState(null);
@@ -56,6 +87,10 @@ export default function Clinician() {
   const trackingTimerRef = useRef(null);
   const trackingStartRef = useRef(null);
   const recoveryTimerRef = useRef(null);
+  const autoTimerRef = useRef(null);
+  const autoRecordRef = useRef(null);
+  const [autoRunning, setAutoRunning] = useState(false);
+  const [autoStepLabel, setAutoStepLabel] = useState('');
   const doubleTapHandlerRef = useRef(null);
 
   // Collapsible sections
@@ -203,18 +238,19 @@ export default function Clinician() {
 
   // Called when controller sends double-tap
   const handleDoubleTapCapture = useCallback(() => {
+    // Check auto protocol first
+    if (autoDoubleTapRef.current?.()) return;
+
     if (trialState === 'adjusting') {
       logPosition('tap');
       doCapture(trialProtocol);
     } else if (trialState === 'tracking') {
-      // During tracking, double-tap just logs a marker
       logPosition('tap');
       const s = sessionRef.current;
       if (s) setSession({ ...s });
     }
   }, [doCapture, trialProtocol, trialState, logPosition]);
 
-  // Keep ref in sync so message handler always has latest version
   doubleTapHandlerRef.current = handleDoubleTapCapture;
 
   // Start continuous tracking at ~30fps
@@ -255,6 +291,150 @@ export default function Clinician() {
     setEyesOpenTime(null);
     setElapsed(0);
   }, []);
+
+  // ===== AUTO PROTOCOL ENGINE =====
+  const autoAdvance = useCallback((stepIdx) => {
+    const s = sessionRef.current;
+    if (!s || stepIdx >= AUTO_STEPS.length) {
+      // Protocol complete
+      if (autoRecordRef.current) { clearInterval(autoRecordRef.current); autoRecordRef.current = null; }
+      const fin = { ...s, autoProtocol: { ...s.autoProtocol, active: false, message: '', stepId: 'done' } };
+      sessionRef.current = fin;
+      setSession({ ...fin });
+      hostRef.current?.broadcast({ type: 'state-updated', state: fin });
+      setAutoRunning(false);
+      setAutoStepLabel('Complete');
+      return;
+    }
+
+    const step = AUTO_STEPS[stepIdx];
+    setAutoStepLabel(`${step.id} (${stepIdx + 1}/${AUTO_STEPS.length})`);
+
+    // Reset targets if needed
+    if (step.reset) {
+      s.targets = { ...s.targets, movableX: 0, movableY: 0 };
+    }
+
+    // Add phase marker
+    if (step.marker) {
+      s.autoProtocol.phaseMarkers = [...(s.autoProtocol.phaseMarkers || []), { t: Date.now(), label: step.marker }];
+    }
+
+    // Update auto protocol display state
+    const ap = {
+      ...s.autoProtocol,
+      active: true,
+      stepIndex: stepIdx,
+      stepId: step.id,
+      message: step.msg || '',
+      showRed: step.red !== false,
+      showGreen: step.green !== false,
+      showLock: step.lock !== false,
+      allowMove: step.move === true,
+    };
+    const next = { ...s, autoProtocol: ap };
+    sessionRef.current = next;
+    setSession({ ...next });
+    hostRef.current?.broadcast({ type: 'state-updated', state: next });
+
+    // Start recording if needed
+    if (step.record && !autoRecordRef.current) {
+      autoRecordRef.current = setInterval(() => {
+        const rs = sessionRef.current;
+        if (!rs) return;
+        const phase = rs.phase === 'near-align' ? 'near' : 'distance';
+        rs.positionLog = [...(rs.positionLog || []), {
+          t: Date.now(), x: rs.targets.movableX, y: rs.targets.movableY,
+          protocol: 'auto', phase, type: 'track',
+        }];
+        sessionRef.current = rs;
+      }, 33);
+    } else if (!step.record && autoRecordRef.current) {
+      clearInterval(autoRecordRef.current);
+      autoRecordRef.current = null;
+    }
+
+    // Handle saccade steps
+    if (step.runSaccade) {
+      const cfg = s.config;
+      hostRef.current?.broadcast({
+        type: 'saccade-start',
+        config: { jumps: cfg.saccadeJumps || 16, amplitude: cfg.saccadeAmplitudePx || 900, pauseMs: cfg.saccadePauseDurationMs || 600 },
+      });
+      const totalTime = 300 + ((cfg.saccadeJumps || 16) + 1) * (cfg.saccadePauseDurationMs || 600);
+      autoTimerRef.current = setTimeout(() => autoAdvance(stepIdx + 1), totalTime);
+      return;
+    }
+
+    // Handle wait-for-tap steps (advance happens via double-tap handler)
+    if (step.waitTap) {
+      // Don't set timer — wait for double-tap
+      return;
+    }
+
+    // Timed step
+    if (step.dur > 0) {
+      autoTimerRef.current = setTimeout(() => autoAdvance(stepIdx + 1), step.dur);
+    }
+    // dur === 0 and no waitTap/saccade means stay (manual advance or protocol end)
+  }, []);
+
+  const handleStartAutoProtocol = useCallback(() => {
+    const s = sessionRef.current;
+    if (!s) return;
+    // Ensure we're in an alignment phase
+    if (s.phase !== 'distance-align' && s.phase !== 'near-align') {
+      const next = { ...s, phase: 'distance-align', targets: { ...s.targets, movableX: 0, movableY: 0, fixedX: 0, fixedY: 0 } };
+      sessionRef.current = next;
+      setSession({ ...next });
+      hostRef.current?.broadcast({ type: 'state-updated', state: next });
+    }
+    // Reset protocol state
+    s.autoProtocol = { ...s.autoProtocol, active: true, startTime: Date.now(), phaseMarkers: [], stepIndex: 0 };
+    s.positionLog = [];
+    sessionRef.current = s;
+    setAutoRunning(true);
+    setTrialState('idle');
+    autoAdvance(0);
+  }, [autoAdvance]);
+
+  const handleStopAutoProtocol = useCallback(() => {
+    if (autoTimerRef.current) { clearTimeout(autoTimerRef.current); autoTimerRef.current = null; }
+    if (autoRecordRef.current) { clearInterval(autoRecordRef.current); autoRecordRef.current = null; }
+    const s = sessionRef.current;
+    if (s) {
+      s.autoProtocol = { ...s.autoProtocol, active: false, message: '' };
+      sessionRef.current = s;
+      setSession({ ...s });
+      hostRef.current?.broadcast({ type: 'state-updated', state: s });
+    }
+    setAutoRunning(false);
+  }, []);
+
+  // Handle double-tap during auto protocol — advance to next step
+  const autoDoubleTapRef = useRef(null);
+  autoDoubleTapRef.current = () => {
+    if (!autoRunning) return false;
+    const s = sessionRef.current;
+    if (!s?.autoProtocol?.active) return false;
+    const stepIdx = s.autoProtocol.stepIndex;
+    const step = AUTO_STEPS[stepIdx];
+    if (!step?.waitTap) return false;
+
+    // Log the tap capture
+    const phase = s.phase === 'near-align' ? 'near' : 'distance';
+    s.positionLog = [...(s.positionLog || []), {
+      t: Date.now(), x: s.targets.movableX, y: s.targets.movableY,
+      protocol: 'auto', phase, type: 'tap',
+    }];
+    // Reset targets for next step
+    s.targets = { ...s.targets, movableX: 0, movableY: 0 };
+    sessionRef.current = s;
+
+    // Advance
+    autoAdvance(stepIdx + 1);
+    return true;
+  };
 
   const handleNewTrial = useCallback((protocol) => {
     setTrialProtocol(protocol);
@@ -483,6 +663,43 @@ export default function Clinician() {
               }}>{p.label}</button>
           ))}
         </div>
+
+        {/* ===== AUTO PROTOCOL ===== */}
+        {autoRunning && (
+          <div className="panel" style={{ borderColor: 'rgba(52,211,153,0.3)', background: 'rgba(16,30,20,0.75)', boxShadow: '0 0 20px rgba(52,211,153,0.08)' }}>
+            <h3 style={{ color: 'var(--success)' }}>Auto Protocol Running</h3>
+            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 8 }}>
+              Step: <b style={{ color: 'var(--text-primary)' }}>{autoStepLabel}</b>
+            </div>
+            <div style={{
+              height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)', marginBottom: 10, overflow: 'hidden',
+            }}>
+              <div style={{
+                height: '100%', borderRadius: 2, transition: 'width 0.3s ease',
+                width: `${((session.autoProtocol?.stepIndex || 0) + 1) / AUTO_STEPS.length * 100}%`,
+                background: 'linear-gradient(90deg, #34d399, #6baaff)',
+              }} />
+            </div>
+            <button className="danger" onClick={handleStopAutoProtocol}
+              style={{ fontSize: '12px', padding: '8px 16px' }}>
+              Stop Protocol
+            </button>
+          </div>
+        )}
+
+        {/* Auto Protocol Start Button (when idle and in alignment phase) */}
+        {!autoRunning && isAlignPhase && trialState === 'idle' && (
+          <button onClick={handleStartAutoProtocol}
+            style={{
+              width: '100%', padding: '12px', fontSize: '14px', fontWeight: 700, marginBottom: 10,
+              borderRadius: '12px', letterSpacing: '0.02em',
+              background: 'linear-gradient(135deg, #0d7a3e, #34d399, #0d7a3e)',
+              borderColor: 'rgba(52,211,153,0.3)', color: '#fff',
+              boxShadow: '0 4px 20px rgba(52,211,153,0.15), inset 0 1px 0 rgba(255,255,255,0.1)',
+            }}>
+            START AUTO PROTOCOL
+          </button>
+        )}
 
         {/* ===== TRIAL WORKFLOW (main area during alignment) ===== */}
         {isAlignPhase && (
@@ -1205,6 +1422,14 @@ export default function Clinician() {
           </div>
         )}
 
+        {/* Auto Protocol Timeline */}
+        {session.autoProtocol?.phaseMarkers?.length > 0 && session.positionLog?.length > 10 && (
+          <div className="panel">
+            <h3>Protocol Timeline</h3>
+            <TimelineGraph positionLog={session.positionLog || []} phaseMarkers={session.autoProtocol.phaseMarkers} startTime={session.autoProtocol.startTime} config={session.config} />
+          </div>
+        )}
+
         {/* FD Curve (Prism Sweep) */}
         {session.prismSweepResults?.length >= 2 && (
           <div className="panel">
@@ -1440,6 +1665,115 @@ function PositionGraph({ positionLog, trials, config, targets }) {
 
   return <canvas ref={canvasRef} width={600} height={200}
     style={{ width: '100%', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)', boxShadow: 'inset 0 1px 4px rgba(0,0,0,0.3)' }} />;
+}
+
+/** Protocol Timeline — H and V position over time with phase annotations */
+function TimelineGraph({ positionLog, phaseMarkers, startTime, config }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !positionLog?.length) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+
+    // Two graphs: H (top half) and V (bottom half)
+    const graphH = h / 2 - 15;
+    const pad = { left: 50, right: 15, top: 25, gap: 30, bottom: 25 };
+
+    ctx.fillStyle = '#0a0a0f';
+    ctx.fillRect(0, 0, w, h);
+
+    const pts = [...positionLog].sort((a, b) => a.t - b.t);
+    const t0 = startTime || pts[0].t;
+    const tEnd = pts[pts.length - 1].t;
+    const tRange = Math.max(tEnd - t0, 1000);
+
+    let maxH = 10, maxV = 10;
+    for (const p of pts) { maxH = Math.max(maxH, Math.abs(p.x)); maxV = Math.max(maxV, Math.abs(p.y)); }
+    maxH *= 1.2; maxV *= 1.2;
+
+    const toX = t => pad.left + ((t - t0) / tRange) * (w - pad.left - pad.right);
+
+    function drawGraph(yOff, gH, data, maxAbs, color, label) {
+      const toY = v => yOff + gH / 2 - (v / maxAbs) * (gH / 2);
+
+      // Zero line
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(pad.left, toY(0)); ctx.lineTo(w - pad.right, toY(0)); ctx.stroke();
+
+      // Label
+      ctx.fillStyle = color; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+      ctx.fillText(label, pad.left, yOff - 4);
+
+      // Y labels
+      ctx.fillStyle = '#555b6e'; ctx.font = '9px monospace'; ctx.textAlign = 'right';
+      ctx.fillText(`+${Math.round(maxAbs)}`, pad.left - 4, yOff + 8);
+      ctx.fillText(`-${Math.round(maxAbs)}`, pad.left - 4, yOff + gH - 2);
+
+      // Track data (lines)
+      const trackPts = data.filter(p => p.type === 'track');
+      if (trackPts.length > 1) {
+        ctx.strokeStyle = color; ctx.lineWidth = 1.2; ctx.globalAlpha = 0.8;
+        ctx.beginPath();
+        trackPts.forEach((p, i) => {
+          const px = toX(p.t), py = toY(p.val);
+          i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+        });
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+
+      // Tap markers
+      data.filter(p => p.type === 'tap').forEach(p => {
+        ctx.fillStyle = '#34d399';
+        ctx.beginPath(); ctx.arc(toX(p.t), toY(p.val), 3.5, 0, Math.PI * 2); ctx.fill();
+      });
+    }
+
+    const hData = pts.map(p => ({ ...p, val: p.x }));
+    const vData = pts.map(p => ({ ...p, val: p.y }));
+
+    drawGraph(pad.top, graphH, hData, maxH, '#42a5f5', 'Horizontal (px) — Right eye relative to left');
+    drawGraph(pad.top + graphH + pad.gap, graphH, vData, maxV, '#ffa726', 'Vertical (px)');
+
+    // Phase markers (vertical bands with labels)
+    const markers = phaseMarkers || [];
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'center';
+    for (let i = 0; i < markers.length; i++) {
+      const mx = toX(markers[i].t);
+      const nextX = i + 1 < markers.length ? toX(markers[i + 1].t) : w - pad.right;
+
+      // Alternating subtle background bands
+      if (i % 2 === 0) {
+        ctx.fillStyle = 'rgba(107,170,255,0.03)';
+        ctx.fillRect(mx, 0, nextX - mx, h);
+      }
+
+      // Vertical line
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(mx, 0); ctx.lineTo(mx, h); ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Label
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      const lx = (mx + nextX) / 2;
+      ctx.fillText(markers[i].label, lx, 10);
+    }
+
+    // Time axis
+    ctx.fillStyle = '#555b6e'; ctx.font = '9px monospace'; ctx.textAlign = 'center';
+    const totalS = tRange / 1000;
+    const tickInterval = totalS > 120 ? 30 : totalS > 60 ? 10 : totalS > 20 ? 5 : 2;
+    for (let s = 0; s <= totalS; s += tickInterval) {
+      ctx.fillText(`${s}s`, toX(t0 + s * 1000), h - 5);
+    }
+  }, [positionLog, phaseMarkers, startTime, config]);
+
+  return <canvas ref={canvasRef} width={800} height={380}
+    style={{ width: '100%', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)' }} />;
 }
 
 /** FD Curve graph — plots the Ogle-type forced vergence S-curve */

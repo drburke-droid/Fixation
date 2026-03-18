@@ -30,6 +30,40 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
     }
 
     const phase = state.phase;
+    const ap = state.autoProtocol;
+
+    // Auto protocol display: show message + selective targets
+    if (ap?.active && ap.message) {
+      // Render targets based on auto protocol visibility flags
+      const apShowRed = ap.showRed !== false;
+      const apShowGreen = ap.showGreen !== false;
+      const apShowLock = ap.showLock !== false;
+
+      if (apShowRed || apShowGreen || apShowLock) {
+        renderTargets(ctx, state, centerX, centerY, {
+          showFixation: apShowLock,
+          showRed: apShowRed,
+          showGreen: apShowGreen,
+          displayType,
+          canvasHeight: h, canvasWidth: w,
+        });
+      }
+
+      // Draw instruction text
+      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const lines = ap.message.split('\n');
+      const fontSize = Math.min(28, w / 25);
+      ctx.font = `500 ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
+      const textY = h * 0.72;
+      lines.forEach((line, i) => {
+        ctx.fillText(line, centerX, textY + (i - (lines.length - 1) / 2) * (fontSize * 1.5));
+      });
+
+      animRef.current = requestAnimationFrame(draw);
+      return;
+    }
 
     // Saccade sequence — show only the fixation lock jumping horizontally (always visible, bold)
     if (saccadeLockX !== null) {

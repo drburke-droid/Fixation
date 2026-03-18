@@ -88,6 +88,18 @@ export function createSession({ patientId = '', examiner = '', config = {} } = {
     positionLog: [],
     prismSweepResults: [],
     prismSweepIndex: 0,
+    autoProtocol: {
+      active: false,
+      stepIndex: -1,
+      stepId: '',
+      message: '',
+      showRed: true,
+      showGreen: true,
+      showLock: true,
+      allowMove: true,
+      phaseMarkers: [],  // { t: ms, label: string }
+      startTime: null,
+    },
     summaryText: '',
   };
 }
