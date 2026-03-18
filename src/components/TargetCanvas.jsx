@@ -36,6 +36,7 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
         showGreen,
         flashActive,
         displayType: phase === 'color-cal-near' ? 'near' : 'distance',
+        canvasHeight: h,
       });
       // Label which color is shown
       ctx.fillStyle = '#555';
@@ -49,7 +50,7 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
       const showRed = suppStep === 'red' || suppStep === 'both';
       const showGreen = suppStep === 'green' || suppStep === 'both';
       renderTargets(ctx, state, centerX, centerY, {
-        showFixation: true, showRed, showGreen, flashActive, displayType,
+        showFixation: true, showRed, showGreen, flashActive, displayType, canvasHeight: h,
       });
     }
     // Transition animation
@@ -57,13 +58,13 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
       const scale = 1 + transitionProgress * 1.5;
       const yShift = transitionProgress * h * 0.3;
       renderTargets(ctx, state, centerX, centerY + yShift, {
-        showFixation: true, showRed: true, showGreen: true, flashActive, scale, displayType,
+        showFixation: true, showRed: true, showGreen: true, flashActive, scale, displayType, canvasHeight: h,
       });
     }
     // Alignment phases
     else if (phase === 'distance-align' || phase === 'near-align') {
       renderTargets(ctx, state, centerX, centerY, {
-        showFixation: true, showRed: true, showGreen: true, flashActive, displayType,
+        showFixation: true, showRed: true, showGreen: true, flashActive, displayType, canvasHeight: h,
       });
     }
     // Calibration phases
@@ -86,7 +87,7 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
       ctx.stroke();
 
       renderTargets(ctx, state, centerX, centerY, {
-        showFixation: true, showRed: true, showGreen: true, flashActive, displayType,
+        showFixation: true, showRed: true, showGreen: true, flashActive, displayType, canvasHeight: h,
       });
     }
     // Idle / waiting

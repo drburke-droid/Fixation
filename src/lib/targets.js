@@ -117,6 +117,7 @@ export function renderTargets(ctx, state, centerX, centerY, options = {}) {
     flashActive = false,
     scale = 1,
     displayType = 'distance', // 'distance' or 'near'
+    canvasHeight = 0,
   } = options;
 
   const config = state.config;
@@ -137,13 +138,14 @@ export function renderTargets(ctx, state, centerX, centerY, options = {}) {
   const fixedX = centerX + targets.fixedX * scale;
   const fixedY = centerY + targets.fixedY * scale;
 
-  // Draw fixation lock (visible to both eyes - white)
+  // Draw fixation lock in upper 1/3 of screen (visible to both eyes - white)
+  const lockY = canvasHeight > 0 ? canvasHeight / 3 : centerY;
   if (showFixation) {
     const lockMode = config.fixationLockMode;
     if (lockMode === 'always' || lockMode === 'pulse' || (lockMode === 'flash' && flashActive)) {
       const alpha = lockMode === 'pulse' ? 0.5 + 0.5 * Math.sin(Date.now() / 500) : 1;
       const lockColor = `rgba(255, 255, 255, ${alpha})`;
-      drawFixationLock(ctx, centerX, centerY, lockSize, lockColor, 2 * scale);
+      drawFixationLock(ctx, centerX, lockY, lockSize, lockColor, 2 * scale);
     }
   }
 
