@@ -44,7 +44,7 @@ export default function Clinician() {
   const [peerError, setPeerError] = useState(null);
   const [connecting, setConnecting] = useState(false);
 
-  // Helper: update session state + broadcast to peers
+  // Helper: update session state + broadcast to peers + persist color settings
   const updateSession = useCallback((updater) => {
     const prev = sessionRef.current;
     if (!prev) return;
@@ -52,6 +52,14 @@ export default function Clinician() {
     sessionRef.current = next;
     setSession({ ...next });
     hostRef.current?.broadcast({ type: 'state-updated', state: next });
+    // Persist color calibration settings to localStorage
+    try {
+      localStorage.setItem('fdq-color-cal', JSON.stringify({
+        redColor: next.config.redColor,
+        greenColor: next.config.greenColor,
+        colorCalibration: next.colorCalibration,
+      }));
+    } catch (_) {}
   }, []);
 
   // Compute base URL for QR codes
@@ -119,8 +127,16 @@ export default function Clinician() {
       hostRef.current = host;
       setPeerId(host.peerId);
       setConnecting(false);
-      // Create the session once peer is ready
+      // Create the session once peer is ready, restore saved color calibration
       const s = createSession({ patientId, examiner });
+      try {
+        const saved = JSON.parse(localStorage.getItem('fdq-color-cal'));
+        if (saved) {
+          if (saved.redColor) s.config.redColor = saved.redColor;
+          if (saved.greenColor) s.config.greenColor = saved.greenColor;
+          if (saved.colorCalibration) s.colorCalibration = saved.colorCalibration;
+        }
+      } catch (_) {}
       sessionRef.current = s;
       setSession({ ...s });
     }).catch(err => {
@@ -635,6 +651,10 @@ export default function Clinician() {
           <div className="btn-row">
             <button onClick={handleResetTarget}>Re-center</button>
             <button onClick={handleFlashLock}>Flash Lock</button>
+            <button onClick={() => {
+              const s = sessionRef.current;
+              if (s) hostRef.current?.broadcast({ type: 'state-updated', state: s });
+            }}>Resend State</button>
             <button className="danger" onClick={() => {
               sessionRef.current = null;
               setSession(null);
