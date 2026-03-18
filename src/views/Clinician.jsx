@@ -41,6 +41,7 @@ export default function Clinician() {
   const [suppressionStep, setSuppressionStep] = useState('red');
   const [peerError, setPeerError] = useState(null);
   const [connecting, setConnecting] = useState(false);
+  const [hostStatus, setHostStatus] = useState('');
 
   // Trial workflow
   const [trialState, setTrialState] = useState('idle'); // idle | waiting | adjusting
@@ -124,6 +125,7 @@ export default function Clinician() {
         }
       },
       roomName.trim(),
+      (statusMsg) => setHostStatus(statusMsg),
     ).then((host) => {
       hostRef.current = host;
       setPeerId(host.peerId);
@@ -256,6 +258,9 @@ export default function Clinician() {
         <div className="panel">
           <h3>New Session</h3>
           {peerError && <p style={{ color: 'var(--danger)', fontSize: '12px', marginBottom: 8 }}>{peerError}</p>}
+          {connecting && hostStatus && (
+            <p style={{ color: 'var(--warning)', fontSize: '12px', marginBottom: 8 }}>{hostStatus}</p>
+          )}
           <div className="field-group">
             <label>Room Name</label>
             <input value={roomName} onChange={e => setRoomName(e.target.value)}
@@ -290,13 +295,15 @@ export default function Clinician() {
         {/* Header */}
         <div style={{ marginBottom: 8 }}>
           <h2 style={{ fontSize: '15px', margin: 0 }}>FDQ Console</h2>
-          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-            Room: {roomName} | {['clinician','distance','near','controller'].map(r =>
-              <span key={r} style={{ color: session.clients[r] ? 'var(--success)' : 'var(--text-muted)' }}>
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+            Peer: <b style={{ color: 'var(--accent)', fontSize: '11px' }}>{peerId}</b>
+            {' | '}
+            {['clinician','distance','near','controller'].map(r =>
+              <span key={r} style={{ color: session.clients[r] ? 'var(--success)' : 'var(--text-muted)', marginRight: 2 }}>
                 {r[0].toUpperCase()}
               </span>
             )}
-          </span>
+          </div>
         </div>
 
         {/* Phase stepper */}
@@ -675,11 +682,70 @@ export default function Clinician() {
             const s = sessionRef.current;
             if (s) hostRef.current?.broadcast({ type: 'state-updated', state: s });
           }} style={{ fontSize: '11px' }}>Resend</button>
+          <button onClick={() => {
+            // Force recreate the host peer — fixes stale signaling issues
+            const oldHost = hostRef.current;
+            const s = sessionRef.current;
+            if (!oldHost || !s) return;
+            oldHost.destroy();
+            hostRef.current = null;
+            setPeerId(null);
+            setHostStatus('Reconnecting host...');
+            createHost(
+              (role) => {
+                const ss = sessionRef.current;
+                if (ss) {
+                  const next = setClientConnected(ss, role, true);
+                  sessionRef.current = next;
+                  setSession({ ...next });
+                  hostRef.current?.sendTo(role, { type: 'state-updated', state: next });
+                }
+              },
+              (role) => {
+                const ss = sessionRef.current;
+                if (ss) {
+                  const next = setClientConnected(ss, role, false);
+                  sessionRef.current = next;
+                  setSession({ ...next });
+                }
+              },
+              (msg) => {
+                const ss = sessionRef.current;
+                if (!ss) return;
+                if (msg.type === 'move-target') {
+                  const next = moveTarget(ss, msg.dx, msg.dy);
+                  sessionRef.current = next;
+                  setSession({ ...next });
+                  hostRef.current?.broadcast({
+                    type: 'target-moved', x: next.targets.movableX, y: next.targets.movableY,
+                  });
+                }
+              },
+              roomName.trim(),
+              (statusMsg) => setHostStatus(statusMsg),
+            ).then((host) => {
+              hostRef.current = host;
+              setPeerId(host.peerId);
+              setHostStatus('Host reconnected: ' + host.peerId);
+              // Update clients to disconnected until they reconnect
+              const next = { ...sessionRef.current,
+                clients: { clinician: true, distance: false, near: false, controller: false },
+              };
+              sessionRef.current = next;
+              setSession({ ...next });
+            }).catch(err => {
+              setHostStatus('Reconnect failed: ' + (err?.message || err));
+            });
+          }} style={{ fontSize: '11px', color: 'var(--warning)' }}>Force Reconnect</button>
           <button className="danger" onClick={() => {
+            hostRef.current?.destroy();
             sessionRef.current = null;
             setSession(null);
           }} style={{ fontSize: '11px' }}>End</button>
         </div>
+        {hostStatus && (
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: 4 }}>{hostStatus}</div>
+        )}
       </div>
 
       {/* ===== RIGHT: Live Data & Results ===== */}
