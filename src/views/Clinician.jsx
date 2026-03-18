@@ -385,12 +385,12 @@ export default function Clinician() {
   // ========== NO SESSION ==========
   if (!session) {
     return (
-      <div style={{ maxWidth: 600, margin: '40px auto', padding: '0 20px' }}>
-        <h1 style={{ fontSize: '20px', marginBottom: '4px' }}>Fixation Disparity Quantifier</h1>
-        <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', fontSize: '13px' }}>
+      <div style={{ maxWidth: 520, margin: '60px auto', padding: '0 24px', animation: 'fade-in 0.4s ease' }}>
+        <h1 style={{ fontSize: '22px', marginBottom: '4px', fontWeight: 700, letterSpacing: '-0.03em' }}>Fixation Disparity Quantifier</h1>
+        <p style={{ color: 'var(--text-secondary)', marginBottom: '28px', fontSize: '13px', letterSpacing: '-0.01em' }}>
           In-phoropter binocular fixation disparity quantification
         </p>
-        <div className="panel">
+        <div className="panel" style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.04)', padding: '24px' }}>
           <h3>New Session</h3>
           {peerError && <p style={{ color: 'var(--danger)', fontSize: '12px', marginBottom: 8 }}>{peerError}</p>}
           {connecting && hostStatus && (
@@ -410,7 +410,7 @@ export default function Clinician() {
             <input value={examiner} onChange={e => setExaminer(e.target.value)} style={{ width: '100%' }} />
           </div>
           <button className="primary" onClick={handleCreateSession}
-            disabled={connecting || !roomName.trim()} style={{ marginTop: 8 }}>
+            disabled={connecting || !roomName.trim()} style={{ marginTop: 12, width: '100%', padding: '10px', fontSize: '14px', fontWeight: 600 }}>
             {connecting ? 'Connecting...' : 'Start Session'}
           </button>
         </div>
@@ -425,16 +425,17 @@ export default function Clinician() {
       <div style={{
         width: '360px', minWidth: '360px',
         borderRight: '1px solid var(--border)',
-        overflowY: 'auto', padding: '10px',
+        background: 'rgba(8, 8, 14, 0.5)',
+        overflowY: 'auto', padding: '12px',
       }}>
         {/* Header */}
-        <div style={{ marginBottom: 8 }}>
-          <h2 style={{ fontSize: '15px', margin: 0 }}>FDQ Console</h2>
-          <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-            Peer: <b style={{ color: 'var(--accent)', fontSize: '11px' }}>{peerId}</b>
+        <div style={{ marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+          <h2 style={{ fontSize: '15px', margin: 0, fontWeight: 700, letterSpacing: '-0.03em' }}>FDQ Console</h2>
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: 2 }}>
+            Peer: <b style={{ color: 'var(--accent)', fontSize: '11px', fontFamily: 'monospace' }}>{peerId}</b>
             {' | '}
             {['clinician','distance','near','controller'].map(r =>
-              <span key={r} style={{ color: session.clients[r] ? 'var(--success)' : 'var(--text-muted)', marginRight: 2 }}>
+              <span key={r} style={{ color: session.clients[r] ? 'var(--success)' : 'var(--text-muted)', marginRight: 3, transition: 'color 0.3s ease' }}>
                 {r[0].toUpperCase()}
               </span>
             )}
@@ -442,25 +443,27 @@ export default function Clinician() {
         </div>
 
         {/* Phase stepper */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginBottom: 10 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: 10 }}>
           {PHASES.map((p, i) => (
             <button key={p.key} onClick={() => handleAdvancePhase(p.key)}
               style={{
-                fontSize: '10px', padding: '2px 6px',
-                background: p.key === currentPhase ? 'var(--accent)' : undefined,
-                borderColor: p.key === currentPhase ? 'var(--accent)' : undefined,
-                opacity: i <= phaseIndex ? 1 : 0.4,
+                fontSize: '10px', padding: '3px 8px', borderRadius: '20px',
+                background: p.key === currentPhase ? 'linear-gradient(135deg, #1558c0, #388bfd)' : undefined,
+                borderColor: p.key === currentPhase ? 'rgba(107,170,255,0.3)' : undefined,
+                boxShadow: p.key === currentPhase ? '0 0 12px rgba(107,170,255,0.15)' : undefined,
+                opacity: i <= phaseIndex ? 1 : 0.35,
+                transition: 'all 0.2s ease',
               }}>{p.label}</button>
           ))}
         </div>
 
         {/* ===== TRIAL WORKFLOW (main area during alignment) ===== */}
         {isAlignPhase && (
-          <div className="panel" style={{ borderColor: 'var(--accent)', borderWidth: 2 }}>
-            <h3 style={{ color: 'var(--accent)' }}>
+          <div className="panel" style={{ borderColor: 'rgba(107,170,255,0.25)', borderWidth: 1, boxShadow: '0 0 24px rgba(107,170,255,0.06), 0 4px 16px rgba(0,0,0,0.2)', background: 'rgba(16,20,35,0.75)' }}>
+            <h3 style={{ color: 'var(--accent)', letterSpacing: '-0.02em' }}>
               {currentPhase === 'distance-align' ? 'Distance' : 'Near'} Trial
-              {trialProtocol === 'saccade' && <span style={{ fontSize: '11px', color: 'var(--warning)', marginLeft: 6 }}>SACCADE</span>}
-              {trialProtocol === 'closeEyes' && trialState !== 'idle' && <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: 6 }}>CLOSE EYES</span>}
+              {trialProtocol === 'saccade' && <span style={{ fontSize: '11px', color: 'var(--warning)', marginLeft: 6, fontWeight: 500 }}>SACCADE</span>}
+              {trialProtocol === 'closeEyes' && trialState !== 'idle' && <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: 6, fontWeight: 500 }}>CLOSE EYES</span>}
             </h3>
 
             {/* IDLE: choose protocol */}
@@ -469,15 +472,15 @@ export default function Clinician() {
                 <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 6 }}>Choose protocol:</div>
                 <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
                   <button className="primary" onClick={() => handleNewTrial('closeEyes')}
-                    style={{ flex: 1, padding: '8px', fontSize: '12px' }}>
+                    style={{ flex: 1, padding: '10px', fontSize: '12px', borderRadius: '10px', fontWeight: 600 }}>
                     Close Eyes
                   </button>
                   <button className="accent" onClick={() => handleNewTrial('saccade')}
-                    style={{ flex: 1, padding: '8px', fontSize: '12px' }}>
+                    style={{ flex: 1, padding: '10px', fontSize: '12px', borderRadius: '10px', fontWeight: 600 }}>
                     Saccade
                   </button>
                   <button onClick={handleStartTracking}
-                    style={{ flex: 1, padding: '8px', fontSize: '12px', background: '#6a1b9a', borderColor: '#9c27b0', color: '#fff' }}>
+                    style={{ flex: 1, padding: '10px', fontSize: '12px', borderRadius: '10px', fontWeight: 600, background: 'linear-gradient(135deg, #5c1690, #7b2fbe)', borderColor: 'rgba(156,39,176,0.3)', color: '#fff', boxShadow: '0 0 12px rgba(123,47,190,0.15)' }}>
                     Tracking
                   </button>
                 </div>
@@ -492,24 +495,24 @@ export default function Clinician() {
             {/* TRACKING: continuous recording */}
             {trialState === 'tracking' && (
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, padding: '6px 10px', borderRadius: '8px', background: 'rgba(244,67,54,0.06)', border: '1px solid rgba(244,67,54,0.12)' }}>
                   <div style={{
                     width: 10, height: 10, borderRadius: '50%', background: '#f44336',
-                    animation: 'pulse-dot 1s ease-in-out infinite',
+                    animation: 'recording-pulse 1.2s ease-in-out infinite',
+                    boxShadow: '0 0 8px rgba(244,67,54,0.4)',
                   }} />
-                  <style>{`@keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>
-                  <span style={{ fontSize: '13px', color: '#f44336', fontWeight: 600 }}>
-                    RECORDING ({(elapsed / 1000).toFixed(0)}s)
+                  <span style={{ fontSize: '13px', color: '#f44336', fontWeight: 600, letterSpacing: '0.02em' }}>
+                    REC {(elapsed / 1000).toFixed(0)}s
                   </span>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    {session.positionLog?.filter(p => p.type === 'track').length || 0} samples
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                    {session.positionLog?.filter(p => p.type === 'track').length || 0} pts
                   </span>
                 </div>
                 <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: 8 }}>
                   Patient maintains alignment. Double-tap marks events.
                 </p>
                 <button className="danger" onClick={handleStopTracking}
-                  style={{ width: '100%', padding: '10px', fontSize: '14px' }}>
+                  style={{ width: '100%', padding: '12px', fontSize: '14px', fontWeight: 600, borderRadius: '10px' }}>
                   Stop Recording
                 </button>
               </div>
@@ -522,7 +525,7 @@ export default function Clinician() {
                   Targets reset. Patient's eyes should be closed.
                 </p>
                 <button className="accent" onClick={handleEyesOpen}
-                  style={{ width: '100%', padding: '10px', fontSize: '14px' }}>
+                  style={{ width: '100%', padding: '12px', fontSize: '14px', fontWeight: 600, borderRadius: '10px' }}>
                   Eyes Open — Start Adjusting
                 </button>
               </div>
@@ -533,7 +536,7 @@ export default function Clinician() {
                   Targets reset. Ready to run saccade sequence.
                 </p>
                 <button className="accent" onClick={handleStartSaccade}
-                  style={{ width: '100%', padding: '10px', fontSize: '14px' }}>
+                  style={{ width: '100%', padding: '12px', fontSize: '14px', fontWeight: 600, borderRadius: '10px' }}>
                   Start Saccade Sequence
                 </button>
                 <p style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: 4 }}>
@@ -549,11 +552,12 @@ export default function Clinician() {
                   Saccade sequence running...
                 </p>
                 <div style={{
-                  height: 6, borderRadius: 3, background: 'var(--bg-tertiary)', overflow: 'hidden', marginBottom: 8,
+                  height: 5, borderRadius: 4, background: 'rgba(255,255,255,0.06)', overflow: 'hidden', marginBottom: 8,
                 }}>
                   <div style={{
                     height: '100%', width: `${saccadeProgress * 100}%`,
-                    background: '#ff9800', borderRadius: 3, transition: 'width 0.15s',
+                    background: 'linear-gradient(90deg, #ff9800, #ffb74d)', borderRadius: 4, transition: 'width 0.2s ease',
+                    boxShadow: '0 0 8px rgba(255,152,0,0.3)',
                   }} />
                 </div>
                 <button className="danger" onClick={() => {
@@ -576,8 +580,11 @@ export default function Clinician() {
                 </p>
                 <button className="primary" onClick={handleCaptureTrial}
                   style={{
-                    width: '100%', padding: '14px', fontSize: '16px',
-                    background: '#238636', marginBottom: 8,
+                    width: '100%', padding: '14px', fontSize: '16px', fontWeight: 700,
+                    background: 'linear-gradient(135deg, #1a8a40, #2ea043, #1a8a40)',
+                    borderColor: 'rgba(52,211,153,0.25)', marginBottom: 8, borderRadius: '12px',
+                    boxShadow: '0 4px 20px rgba(46,160,67,0.2), inset 0 1px 0 rgba(255,255,255,0.08)',
+                    letterSpacing: '0.02em', transition: 'all 0.2s ease',
                   }}>
                   LOCK IN MEASUREMENT
                 </button>
@@ -623,10 +630,15 @@ export default function Clinician() {
         <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
           <button onClick={() => handleSetLockMode(session.config.fixationLockMode === 'off' ? 'always' : 'off')}
             style={{
-              flex: 1, padding: '8px', fontSize: '13px', fontWeight: 600,
-              background: session.config.fixationLockMode !== 'off' ? '#1565c0' : 'var(--bg-tertiary)',
-              borderColor: session.config.fixationLockMode !== 'off' ? '#1976d2' : 'var(--border)',
+              flex: 1, padding: '10px', fontSize: '13px', fontWeight: 600, borderRadius: '10px',
+              background: session.config.fixationLockMode !== 'off'
+                ? 'linear-gradient(135deg, #1255a8, #1976d2, #1565c0)' : 'var(--bg-tertiary)',
+              borderColor: session.config.fixationLockMode !== 'off'
+                ? 'rgba(25,118,210,0.35)' : 'var(--border)',
               color: session.config.fixationLockMode !== 'off' ? '#fff' : 'var(--text-muted)',
+              boxShadow: session.config.fixationLockMode !== 'off'
+                ? '0 0 16px rgba(25,118,210,0.2), inset 0 1px 0 rgba(255,255,255,0.08)' : 'none',
+              transition: 'all 0.25s ease',
             }}>
             Lock {session.config.fixationLockMode !== 'off' ? 'ON' : 'OFF'}
           </button>
@@ -655,14 +667,14 @@ export default function Clinician() {
                   </span>
                 ))}
               </div>
-              <div style={{ display: 'flex', gap: 10 }}>
-                <div style={{ background: '#fff', padding: 6, borderRadius: 4, display: 'inline-block' }}>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                <div style={{ background: '#fff', padding: 8, borderRadius: '10px', display: 'inline-block', boxShadow: '0 2px 12px rgba(0,0,0,0.25)' }}>
                   <QRCodeSVG value={`${baseUrl}/controller/${peerId}`} size={80} />
                 </div>
-                <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                  <div>Controller: .../controller/{peerId}</div>
-                  <div>Distance: .../distance/{peerId}</div>
-                  <div>Near: .../near/{peerId}</div>
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'monospace', lineHeight: 1.8 }}>
+                  <div>Controller: .../{peerId}</div>
+                  <div>Distance: .../{peerId}</div>
+                  <div>Near: .../{peerId}</div>
                 </div>
               </div>
             </div>
@@ -995,16 +1007,17 @@ export default function Clinician() {
       </div>
 
       {/* ===== RIGHT: Live Data & Results ===== */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '10px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px' }}>
         {/* === LIVE PRISM READOUT === */}
-        <div className="panel" style={{ borderColor: 'var(--accent)', borderWidth: 2 }}>
-          <h3 style={{ color: 'var(--accent)', marginBottom: 8 }}>Live Position</h3>
+        <div className="panel" style={{ borderColor: 'rgba(107,170,255,0.15)', background: 'rgba(12,16,30,0.70)', backdropFilter: 'blur(20px) saturate(1.5)', WebkitBackdropFilter: 'blur(20px) saturate(1.5)', boxShadow: '0 0 30px rgba(107,170,255,0.05), 0 8px 32px rgba(0,0,0,0.25)' }}>
+          <h3 style={{ color: 'var(--accent)', marginBottom: 10, letterSpacing: '-0.02em' }}>Live Position</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Horizontal</div>
+              <div style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, marginBottom: 2 }}>Horizontal</div>
               <div style={{
-                fontSize: '30px', fontWeight: 'bold', fontFamily: 'monospace',
+                fontSize: '32px', fontWeight: 700, fontFamily: "'SF Mono', 'Fira Code', monospace",
                 color: livePrism ? (Math.abs(livePrism.horizontalPrism) < 0.1 ? 'var(--success)' : 'var(--text-primary)') : 'var(--text-muted)',
+                letterSpacing: '-0.02em', transition: 'color 0.3s ease',
               }}>
                 {livePrism ? formatPrism(livePrism.horizontalPrism, liveLabels?.hBase || '') : '—'}
               </div>
@@ -1018,10 +1031,11 @@ export default function Clinician() {
               </div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Vertical</div>
+              <div style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, marginBottom: 2 }}>Vertical</div>
               <div style={{
-                fontSize: '30px', fontWeight: 'bold', fontFamily: 'monospace',
+                fontSize: '32px', fontWeight: 700, fontFamily: "'SF Mono', 'Fira Code', monospace",
                 color: livePrism ? (Math.abs(livePrism.verticalPrism) < 0.1 ? 'var(--success)' : 'var(--text-primary)') : 'var(--text-muted)',
+                letterSpacing: '-0.02em', transition: 'color 0.3s ease',
               }}>
                 {livePrism ? formatPrism(livePrism.verticalPrism, liveLabels?.vBase || '') : '—'}
               </div>
@@ -1048,18 +1062,20 @@ export default function Clinician() {
         </div>
 
         {/* Preview */}
-        <div className="panel" style={{ padding: '10px' }}>
+        <div className="panel" style={{ padding: '8px', overflow: 'hidden' }}>
           <ClinicianPreview session={session} />
         </div>
 
         {/* Suppression result */}
         {session.suppressionCheck.completed && (
           <div style={{
-            padding: '6px 10px', borderRadius: 6, marginBottom: 10, fontSize: '12px',
-            background: session.suppressionCheck.result === 'pass' ? '#0d1f0d' :
-                        session.suppressionCheck.result === 'fail' ? '#1f0d0d' : '#1f1a0d',
-            border: `1px solid ${session.suppressionCheck.result === 'pass' ? 'var(--success)' :
-                     session.suppressionCheck.result === 'fail' ? 'var(--danger)' : 'var(--warning)'}`,
+            padding: '8px 12px', borderRadius: '10px', marginBottom: 10, fontSize: '12px', fontWeight: 500,
+            background: session.suppressionCheck.result === 'pass' ? 'rgba(52,211,153,0.06)' :
+                        session.suppressionCheck.result === 'fail' ? 'rgba(248,113,113,0.06)' : 'rgba(251,191,36,0.06)',
+            border: `1px solid ${session.suppressionCheck.result === 'pass' ? 'rgba(52,211,153,0.2)' :
+                     session.suppressionCheck.result === 'fail' ? 'rgba(248,113,113,0.2)' : 'rgba(251,191,36,0.2)'}`,
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
           }}>
             Suppression: <b>{session.suppressionCheck.result?.toUpperCase()}</b>
           </div>
@@ -1133,7 +1149,7 @@ export default function Clinician() {
             <button onClick={handleGenerateSummary} style={{ marginBottom: 6, fontSize: '11px' }}>
               Generate</button>
             <textarea value={summaryText} onChange={e => setSummaryText(e.target.value)}
-              rows={6} style={{ width: '100%', fontFamily: 'monospace', fontSize: '11px', resize: 'vertical' }}
+              rows={6} style={{ width: '100%', fontFamily: "'SF Mono', 'Fira Code', monospace", fontSize: '11px', resize: 'vertical', borderRadius: '8px', lineHeight: 1.6 }}
               placeholder="Click Generate or type..." />
             <div style={{ marginTop: 6 }}>
               <button className="primary" onClick={handleCopyToClipboard} style={{ fontSize: '12px' }}>
@@ -1172,13 +1188,13 @@ function ClinicianPreview({ session }) {
   }, [session]);
 
   return <canvas ref={canvasRef} width={300} height={180}
-    style={{ borderRadius: 4, border: '1px solid var(--border)', display: 'block', width: '100%' }} />;
+    style={{ borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)', display: 'block', width: '100%', boxShadow: 'inset 0 1px 4px rgba(0,0,0,0.3)' }} />;
 }
 
 function StatsBlock({ title, stats }) {
   return (
-    <div style={{ fontSize: '11px', fontFamily: 'monospace', lineHeight: 1.7 }}>
-      <div style={{ fontWeight: 'bold', fontSize: '12px', marginBottom: 4 }}>{title} ({stats.count} trials)</div>
+    <div style={{ fontSize: '11px', fontFamily: "'SF Mono', 'Fira Code', monospace", lineHeight: 1.8, padding: '8px', borderRadius: '8px', background: 'rgba(255,255,255,0.02)' }}>
+      <div style={{ fontWeight: 700, fontSize: '12px', marginBottom: 6, letterSpacing: '-0.01em' }}>{title} ({stats.count} trials)</div>
       <div>H prism: {stats.meanH_prism} pd (SD {stats.stdX_px} px)</div>
       <div>V prism: {stats.meanV_prism} pd (SD {stats.stdY_px} px)</div>
       <div>Mean: {stats.meanX_arcmin}' × {stats.meanY_arcmin}' arcmin</div>
@@ -1317,8 +1333,8 @@ function PositionGraph({ positionLog, trials, config, targets }) {
   }, [positionLog, trials, config, targets]);
 
   return <canvas ref={canvasRef} width={600} height={200}
-    style={{ width: '100%', borderRadius: 4, border: '1px solid var(--border)' }} />;
+    style={{ width: '100%', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)', boxShadow: 'inset 0 1px 4px rgba(0,0,0,0.3)' }} />;
 }
 
-const thStyle = { textAlign: 'left', padding: '4px 6px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap', fontSize: '11px' };
-const tdStyle = { padding: '4px 6px', fontFamily: 'monospace', whiteSpace: 'nowrap' };
+const thStyle = { textAlign: 'left', padding: '6px 8px', color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.04em' };
+const tdStyle = { padding: '6px 8px', fontFamily: "'SF Mono', 'Fira Code', monospace", whiteSpace: 'nowrap', fontSize: '12px' };
