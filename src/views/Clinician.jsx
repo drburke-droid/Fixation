@@ -44,12 +44,14 @@ export default function Clinician() {
   const [hostStatus, setHostStatus] = useState('');
 
   // Trial workflow
-  const [trialState, setTrialState] = useState('idle'); // idle | waiting | saccading | adjusting
-  const [trialProtocol, setTrialProtocol] = useState('closeEyes'); // closeEyes | saccade
+  const [trialState, setTrialState] = useState('idle'); // idle | waiting | saccading | adjusting | tracking
+  const [trialProtocol, setTrialProtocol] = useState('closeEyes'); // closeEyes | saccade | tracking
   const [eyesOpenTime, setEyesOpenTime] = useState(null);
   const [elapsed, setElapsed] = useState(0);
   const [saccadeProgress, setSaccadeProgress] = useState(0);
   const saccadeTimerRef = useRef(null);
+  const trackingTimerRef = useRef(null);
+  const trackingStartRef = useRef(null);
 
   // Collapsible sections
   const [showConfig, setShowConfig] = useState(false);
@@ -86,7 +88,11 @@ export default function Clinician() {
   }, []);
 
   useEffect(() => {
-    return () => { hostRef.current?.destroy(); };
+    return () => {
+      hostRef.current?.destroy();
+      if (trackingTimerRef.current) clearInterval(trackingTimerRef.current);
+      if (saccadeTimerRef.current) clearInterval(saccadeTimerRef.current);
+    };
   }, []);
 
   // --- Peer host + session creation ---
@@ -180,16 +186,78 @@ export default function Clinician() {
   }, [eyesOpenTime]);
 
   const handleCaptureTrial = useCallback(() => {
+    logPosition('capture');
     doCapture(trialProtocol);
-  }, [doCapture, trialProtocol]);
+  }, [doCapture, trialProtocol, logPosition]);
+
+  // Log current position to positionLog
+  const logPosition = useCallback((type) => {
+    const s = sessionRef.current;
+    if (!s) return;
+    const phase = s.phase === 'distance-align' ? 'distance' : 'near';
+    const entry = {
+      t: Date.now(),
+      x: s.targets.movableX,
+      y: s.targets.movableY,
+      protocol: trialProtocol,
+      phase,
+      type, // 'tap' | 'track' | 'capture'
+    };
+    s.positionLog = [...(s.positionLog || []), entry];
+    sessionRef.current = s;
+  }, [trialProtocol]);
 
   // Called when controller sends double-tap
   const handleDoubleTapCapture = useCallback(() => {
-    // Only auto-capture during adjusting phase
     if (trialState === 'adjusting') {
+      logPosition('tap');
       doCapture(trialProtocol);
+    } else if (trialState === 'tracking') {
+      // During tracking, double-tap just logs a marker
+      logPosition('tap');
+      const s = sessionRef.current;
+      if (s) setSession({ ...s });
     }
-  }, [doCapture, trialProtocol, trialState]);
+  }, [doCapture, trialProtocol, trialState, logPosition]);
+
+  // Start continuous tracking at ~30fps
+  const handleStartTracking = useCallback(() => {
+    updateSession(prev => resetTarget(prev));
+    setTrialProtocol('tracking');
+    setTrialState('tracking');
+    setEyesOpenTime(Date.now());
+    trackingStartRef.current = Date.now();
+
+    if (trackingTimerRef.current) clearInterval(trackingTimerRef.current);
+    trackingTimerRef.current = setInterval(() => {
+      const s = sessionRef.current;
+      if (!s) return;
+      const phase = s.phase === 'distance-align' ? 'distance' : 'near';
+      const entry = {
+        t: Date.now(),
+        x: s.targets.movableX,
+        y: s.targets.movableY,
+        protocol: 'tracking',
+        phase,
+        type: 'track',
+      };
+      s.positionLog = [...(s.positionLog || []), entry];
+      sessionRef.current = s;
+    }, 33); // ~30fps
+  }, [updateSession]);
+
+  const handleStopTracking = useCallback(() => {
+    if (trackingTimerRef.current) {
+      clearInterval(trackingTimerRef.current);
+      trackingTimerRef.current = null;
+    }
+    // Force a re-render to show updated log
+    const s = sessionRef.current;
+    if (s) setSession({ ...s });
+    setTrialState('idle');
+    setEyesOpenTime(null);
+    setElapsed(0);
+  }, []);
 
   const handleNewTrial = useCallback((protocol) => {
     setTrialProtocol(protocol);
@@ -398,21 +466,52 @@ export default function Clinician() {
             {/* IDLE: choose protocol */}
             {trialState === 'idle' && (
               <div>
-                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 8 }}>Choose protocol:</div>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 6 }}>Choose protocol:</div>
+                <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
                   <button className="primary" onClick={() => handleNewTrial('closeEyes')}
-                    style={{ flex: 1, padding: '10px', fontSize: '13px' }}>
-                    Close Eyes Protocol
+                    style={{ flex: 1, padding: '8px', fontSize: '12px' }}>
+                    Close Eyes
                   </button>
                   <button className="accent" onClick={() => handleNewTrial('saccade')}
-                    style={{ flex: 1, padding: '10px', fontSize: '13px' }}>
-                    Saccade Protocol
+                    style={{ flex: 1, padding: '8px', fontSize: '12px' }}>
+                    Saccade
+                  </button>
+                  <button onClick={handleStartTracking}
+                    style={{ flex: 1, padding: '8px', fontSize: '12px', background: '#6a1b9a', borderColor: '#9c27b0', color: '#fff' }}>
+                    Tracking
                   </button>
                 </div>
-                <p style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                  Close Eyes: patient closes eyes → opens → adjusts → clinician captures<br/>
-                  Saccade: fixation lock jumps L/R → targets appear → patient adjusts → double-tap captures
+                <p style={{ fontSize: '9px', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                  Close Eyes: close → open → adjust → capture |
+                  Saccade: lock jumps L/R → adjust → double-tap |
+                  Tracking: continuous 30fps recording while patient maintains alignment
                 </p>
+              </div>
+            )}
+
+            {/* TRACKING: continuous recording */}
+            {trialState === 'tracking' && (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <div style={{
+                    width: 10, height: 10, borderRadius: '50%', background: '#f44336',
+                    animation: 'pulse-dot 1s ease-in-out infinite',
+                  }} />
+                  <style>{`@keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>
+                  <span style={{ fontSize: '13px', color: '#f44336', fontWeight: 600 }}>
+                    RECORDING ({(elapsed / 1000).toFixed(0)}s)
+                  </span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    {session.positionLog?.filter(p => p.type === 'track').length || 0} samples
+                  </span>
+                </div>
+                <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: 8 }}>
+                  Patient maintains alignment. Double-tap marks events.
+                </p>
+                <button className="danger" onClick={handleStopTracking}
+                  style={{ width: '100%', padding: '10px', fontSize: '14px' }}>
+                  Stop Recording
+                </button>
               </div>
             )}
 
@@ -520,20 +619,24 @@ export default function Clinician() {
           </div>
         )}
 
-        {/* Fixation Lock (compact) */}
-        <div className="panel" style={{ padding: '10px' }}>
-          <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginRight: 4 }}>Lock:</span>
-            {LOCK_MODES.map(mode => (
-              <button key={mode} onClick={() => handleSetLockMode(mode)}
-                style={{
-                  fontSize: '10px', padding: '2px 6px', textTransform: 'capitalize',
-                  background: session.config.fixationLockMode === mode ? 'var(--accent)' : undefined,
-                  borderColor: session.config.fixationLockMode === mode ? 'var(--accent)' : undefined,
-                }}>{mode}</button>
-            ))}
-            <button onClick={handleFlashLock} style={{ fontSize: '10px', padding: '2px 6px' }}>Flash</button>
-          </div>
+        {/* Fixation Lock — prominent toggle */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+          <button onClick={() => handleSetLockMode(session.config.fixationLockMode === 'off' ? 'always' : 'off')}
+            style={{
+              flex: 1, padding: '8px', fontSize: '13px', fontWeight: 600,
+              background: session.config.fixationLockMode !== 'off' ? '#1565c0' : 'var(--bg-tertiary)',
+              borderColor: session.config.fixationLockMode !== 'off' ? '#1976d2' : 'var(--border)',
+              color: session.config.fixationLockMode !== 'off' ? '#fff' : 'var(--text-muted)',
+            }}>
+            Lock {session.config.fixationLockMode !== 'off' ? 'ON' : 'OFF'}
+          </button>
+          <button onClick={handleFlashLock}
+            style={{ padding: '8px 12px', fontSize: '12px' }}>Flash</button>
+          <select value={session.config.fixationLockMode}
+            onChange={e => handleSetLockMode(e.target.value)}
+            style={{ fontSize: '11px', padding: '4px' }}>
+            {LOCK_MODES.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
         </div>
 
         {/* Pairing (collapsible) */}
@@ -1004,6 +1107,14 @@ export default function Clinician() {
           </div>
         )}
 
+        {/* Position Graph */}
+        {(session.positionLog?.length > 0 || session.trials.length > 0) && (
+          <div className="panel">
+            <h3>Position Over Time</h3>
+            <PositionGraph positionLog={session.positionLog || []} trials={session.trials} config={session.config} targets={session.targets} />
+          </div>
+        )}
+
         {/* Statistics */}
         {(distStats || nearStats) && (
           <div className="panel">
@@ -1077,6 +1188,136 @@ function StatsBlock({ title, stats }) {
       }}>{stats.variabilityNote}</div>
     </div>
   );
+}
+
+/** Position-over-time graph — shows tracking data and discrete captures */
+function PositionGraph({ positionLog, trials, config, targets }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    const pad = { top: 20, right: 20, bottom: 30, left: 50 };
+    const plotW = w - pad.left - pad.right;
+    const plotH = h - pad.top - pad.bottom;
+
+    ctx.fillStyle = '#0d1117';
+    ctx.fillRect(0, 0, w, h);
+
+    // Combine all data points
+    const allPoints = [...(positionLog || [])];
+    const trialPoints = (trials || []).map(t => ({
+      t: new Date(t.capturedAt).getTime(), x: t.xPx, y: t.yPx,
+      type: 'capture', protocol: t.protocol || 'closeEyes',
+    }));
+    allPoints.push(...trialPoints);
+
+    if (allPoints.length === 0) return;
+
+    allPoints.sort((a, b) => a.t - b.t);
+    const t0 = allPoints[0].t;
+    const tMax = allPoints[allPoints.length - 1].t - t0 || 1000;
+
+    // Compute Y range
+    let maxAbs = 10;
+    for (const p of allPoints) {
+      maxAbs = Math.max(maxAbs, Math.abs(p.x), Math.abs(p.y));
+    }
+    maxAbs = Math.ceil(maxAbs * 1.2);
+
+    const toX = (t) => pad.left + ((t - t0) / tMax) * plotW;
+    const toY = (v) => pad.top + plotH / 2 - (v / maxAbs) * (plotH / 2);
+
+    // Grid
+    ctx.strokeStyle = '#21262d';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, toY(0));
+    ctx.lineTo(w - pad.right, toY(0));
+    ctx.stroke();
+
+    // Y axis labels
+    ctx.fillStyle = '#484f58';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(`+${maxAbs}px`, pad.left - 4, pad.top + 4);
+    ctx.fillText('0', pad.left - 4, toY(0) + 3);
+    ctx.fillText(`-${maxAbs}px`, pad.left - 4, pad.top + plotH);
+
+    // X axis labels
+    ctx.textAlign = 'center';
+    const secs = tMax / 1000;
+    for (let s = 0; s <= secs; s += Math.max(1, Math.floor(secs / 5))) {
+      const tx = toX(t0 + s * 1000);
+      ctx.fillText(`${s}s`, tx, h - 5);
+    }
+
+    // Draw tracking line (continuous)
+    const trackPts = allPoints.filter(p => p.type === 'track');
+    if (trackPts.length > 1) {
+      // Horizontal (blue)
+      ctx.strokeStyle = '#42a5f5';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      trackPts.forEach((p, i) => {
+        const px = toX(p.t), py = toY(p.x);
+        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+
+      // Vertical (orange)
+      ctx.strokeStyle = '#ffa726';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      trackPts.forEach((p, i) => {
+        const px = toX(p.t), py = toY(p.y);
+        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+    }
+
+    // Draw tap markers (triangles)
+    const tapPts = allPoints.filter(p => p.type === 'tap');
+    for (const p of tapPts) {
+      const px = toX(p.t);
+      ctx.fillStyle = '#66bb6a';
+      ctx.beginPath();
+      ctx.moveTo(px, toY(0) - 4);
+      ctx.lineTo(px - 4, toY(0) + 4);
+      ctx.lineTo(px + 4, toY(0) + 4);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Draw capture markers (circles)
+    const capPts = allPoints.filter(p => p.type === 'capture');
+    for (const p of capPts) {
+      const px = toX(p.t);
+      // H
+      ctx.fillStyle = '#42a5f5';
+      ctx.beginPath();
+      ctx.arc(px, toY(p.x), 4, 0, Math.PI * 2);
+      ctx.fill();
+      // V
+      ctx.fillStyle = '#ffa726';
+      ctx.beginPath();
+      ctx.arc(px, toY(p.y), 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Legend
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#42a5f5';
+    ctx.fillText('— H (px)', w - 100, 14);
+    ctx.fillStyle = '#ffa726';
+    ctx.fillText('— V (px)', w - 50, 14);
+  }, [positionLog, trials, config, targets]);
+
+  return <canvas ref={canvasRef} width={600} height={200}
+    style={{ width: '100%', borderRadius: 4, border: '1px solid var(--border)' }} />;
 }
 
 const thStyle = { textAlign: 'left', padding: '4px 6px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap', fontSize: '11px' };

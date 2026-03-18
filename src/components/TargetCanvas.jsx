@@ -31,11 +31,11 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
 
     const phase = state.phase;
 
-    // Saccade sequence — show only the fixation lock jumping horizontally
+    // Saccade sequence — show only the fixation lock jumping horizontally (always visible, bold)
     if (saccadeLockX !== null) {
-      const lockSize = (state.config?.fixationLockSizePx || 30);
+      const lockSize = (state.config?.fixationLockSizePx || 50) * 1.5;
       const lockY = h / 3;
-      drawFixationLock(ctx, centerX + saccadeLockX, lockY, lockSize, '#FFFFFF', 2);
+      drawFixationLock(ctx, centerX + saccadeLockX, lockY, lockSize, '#FFFFFF', 5);
       animRef.current = requestAnimationFrame(draw);
       return;
     }

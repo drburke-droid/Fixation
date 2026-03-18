@@ -73,10 +73,10 @@ export function drawHorizontalLine(ctx, x, y, size, color, strokeWidth = 3) {
   ctx.stroke();
 }
 
-/** Draw fixation lock — small cross with gap and center dot */
-export function drawFixationLock(ctx, x, y, size, color = '#FFFFFF', strokeWidth = 2) {
+/** Draw fixation lock — bold cross with gap and center dot */
+export function drawFixationLock(ctx, x, y, size, color = '#FFFFFF', strokeWidth = 3) {
   const armLen = size / 2;
-  const gap = size * 0.15;
+  const gap = size * 0.12;
   ctx.strokeStyle = color;
   ctx.lineWidth = strokeWidth;
   ctx.lineCap = 'round';
@@ -86,8 +86,9 @@ export function drawFixationLock(ctx, x, y, size, color = '#FFFFFF', strokeWidth
   ctx.moveTo(x - gap, y); ctx.lineTo(x - armLen, y);
   ctx.moveTo(x + gap, y); ctx.lineTo(x + armLen, y);
   ctx.stroke();
+  // Bold center dot
   ctx.beginPath();
-  ctx.arc(x, y, 2, 0, Math.PI * 2);
+  ctx.arc(x, y, strokeWidth, 0, Math.PI * 2);
   ctx.fillStyle = color;
   ctx.fill();
 }
@@ -245,7 +246,7 @@ export function renderTargets(ctx, state, centerX, centerY, options = {}) {
     if (lockMode === 'always' || lockMode === 'pulse' || (lockMode === 'flash' && flashActive)) {
       const alpha = lockMode === 'pulse' ? 0.5 + 0.5 * Math.sin(Date.now() / 500) : 1;
       const lockColor = `rgba(255, 255, 255, ${alpha})`;
-      drawFixationLock(ctx, centerX, lockY, lockSize, lockColor, 2 * scale);
+      drawFixationLock(ctx, centerX, lockY, lockSize, lockColor, 4 * scale);
     }
   }
 

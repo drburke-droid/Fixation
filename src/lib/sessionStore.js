@@ -20,10 +20,10 @@ const defaultConfig = {
   fixationLockMode: 'always',
   movementSensitivity: 'normal',
   repeatTrials: true,
-  distanceTargetSizePx: 160,
+  distanceTargetSizePx: 250,
   nearTargetSizePx: 80,
-  strokeWidth: 4,
-  fixationLockSizePx: 30,
+  strokeWidth: 20,
+  fixationLockSizePx: 50,
   backgroundColor: '#000000',
   redColor: '#FF0000',
   greenColor: '#00FF00',
@@ -32,8 +32,8 @@ const defaultConfig = {
   antiBleedLevel: 0,      // 0-50: dim background fill of both colors to mask bleed-through
   paragraphFontSizeDistance: 56,
   paragraphFontSizeNear: 15,
-  saccadeJumps: 8,
-  saccadeAmplitudePx: 300,
+  saccadeJumps: 16,
+  saccadeAmplitudePx: 600,
   saccadePauseDurationMs: 200,
   mirrorDistance: true,
   displayPPI: 96,
@@ -84,6 +84,7 @@ export function createSession({ patientId = '', examiner = '', config = {} } = {
       movableIsRed: true,
     },
     trials: [],
+    positionLog: [],  // { t: ms, x, y, protocol, phase, type: 'tap'|'track'|'capture' }
     summaryText: '',
   };
 }
