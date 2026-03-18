@@ -3,6 +3,8 @@
  * Each target can be independently shown, hidden, recolored, scaled, and translated.
  */
 
+// --- Basic shape drawing functions ---
+
 /** Draw a ring (circle outline) */
 export function drawRing(ctx, x, y, radius, color, strokeWidth = 3) {
   ctx.beginPath();
@@ -26,60 +28,126 @@ export function drawCross(ctx, x, y, size, color, strokeWidth = 3) {
   ctx.stroke();
 }
 
-/** Draw fixation lock — small cross with circle */
-export function drawFixationLock(ctx, x, y, size, color = '#FFFFFF', strokeWidth = 2) {
-  const armLen = size / 2;
-  const gap = size * 0.15;
+/** Draw a triangle (roof) — apex at top, base at center line */
+export function drawTriangleRoof(ctx, x, y, size, color, strokeWidth = 3) {
+  const half = size;
+  ctx.beginPath();
+  ctx.moveTo(x, y - half);           // apex
+  ctx.lineTo(x + half * 0.8, y);     // base right
+  ctx.lineTo(x - half * 0.8, y);     // base left
+  ctx.closePath();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = strokeWidth;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+}
 
+/** Draw a square (base) — top edge at center, extends downward */
+export function drawSquareBase(ctx, x, y, size, color, strokeWidth = 3) {
+  const side = size * 1.4;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = strokeWidth;
+  ctx.lineJoin = 'round';
+  ctx.strokeRect(x - side / 2, y, side, side);
+}
+
+/** Draw a vertical line */
+export function drawVerticalLine(ctx, x, y, size, color, strokeWidth = 3) {
+  ctx.beginPath();
+  ctx.moveTo(x, y - size);
+  ctx.lineTo(x, y + size);
   ctx.strokeStyle = color;
   ctx.lineWidth = strokeWidth;
   ctx.lineCap = 'round';
-
-  // Draw 4 arms with a gap in the center
-  ctx.beginPath();
-  // Top arm
-  ctx.moveTo(x, y - gap);
-  ctx.lineTo(x, y - armLen);
-  // Bottom arm
-  ctx.moveTo(x, y + gap);
-  ctx.lineTo(x, y + armLen);
-  // Left arm
-  ctx.moveTo(x - gap, y);
-  ctx.lineTo(x - armLen, y);
-  // Right arm
-  ctx.moveTo(x + gap, y);
-  ctx.lineTo(x + armLen, y);
   ctx.stroke();
+}
 
-  // Center dot
+/** Draw a horizontal line */
+export function drawHorizontalLine(ctx, x, y, size, color, strokeWidth = 3) {
+  ctx.beginPath();
+  ctx.moveTo(x - size, y);
+  ctx.lineTo(x + size, y);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = strokeWidth;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+}
+
+/** Draw fixation lock — small cross with gap and center dot */
+export function drawFixationLock(ctx, x, y, size, color = '#FFFFFF', strokeWidth = 2) {
+  const armLen = size / 2;
+  const gap = size * 0.15;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = strokeWidth;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x, y - gap); ctx.lineTo(x, y - armLen);
+  ctx.moveTo(x, y + gap); ctx.lineTo(x, y + armLen);
+  ctx.moveTo(x - gap, y); ctx.lineTo(x - armLen, y);
+  ctx.moveTo(x + gap, y); ctx.lineTo(x + armLen, y);
+  ctx.stroke();
   ctx.beginPath();
   ctx.arc(x, y, 2, 0, Math.PI * 2);
   ctx.fillStyle = color;
   ctx.fill();
 }
 
-/** Draw a nonius line pair (vertical lines offset horizontally) */
-export function drawNoniusLines(ctx, x, y, length, color, strokeWidth = 2) {
-  const half = length / 2;
-  ctx.beginPath();
-  ctx.moveTo(x, y - half);
-  ctx.lineTo(x, y + half);
-  ctx.strokeStyle = color;
-  ctx.lineWidth = strokeWidth;
-  ctx.lineCap = 'round';
-  ctx.stroke();
-}
+// --- Paragraph text for alternating word target ---
+
+const PARAGRAPH_WORDS = [
+  'The', 'quick', 'brown', 'fox', 'jumps', 'over', 'the', 'lazy',
+  'dog', 'while', 'the', 'bright', 'sun', 'sets', 'behind', 'the',
+  'distant', 'hills', 'and', 'the', 'cool', 'evening', 'breeze',
+  'carries', 'the', 'sweet', 'scent', 'of', 'flowers', 'through',
+  'the', 'quiet', 'village', 'streets', 'as', 'birds', 'return',
+  'to', 'their', 'nests', 'and', 'children', 'play', 'softly',
+  'in', 'the', 'warm', 'garden', 'light', 'before', 'the', 'stars',
+  'appear', 'above', 'the', 'trees',
+];
 
 /**
- * Target presets library.
- * Each preset defines a pair of targets for dissociated viewing.
+ * Lay out paragraph words into lines that fit within maxWidth.
+ * Returns array of { word, index, x, y } objects.
  */
+function layoutParagraph(ctx, fontSize, maxWidth, startX, startY) {
+  ctx.font = `${fontSize}px sans-serif`;
+  const spaceWidth = ctx.measureText(' ').width;
+  const lineHeight = fontSize * 1.5;
+  const layout = [];
+  let lineX = 0;
+  let lineY = 0;
+
+  for (let i = 0; i < PARAGRAPH_WORDS.length; i++) {
+    const word = PARAGRAPH_WORDS[i];
+    const wordWidth = ctx.measureText(word).width;
+
+    if (lineX + wordWidth > maxWidth && lineX > 0) {
+      lineX = 0;
+      lineY += lineHeight;
+    }
+
+    layout.push({
+      word,
+      index: i,
+      x: startX + lineX,
+      y: startY + lineY,
+      width: wordWidth,
+    });
+
+    lineX += wordWidth + spaceWidth;
+  }
+
+  return layout;
+}
+
+// --- Target presets ---
+
 export const targetPresets = {
   'ring-cross': {
     name: 'Ring & Cross',
     description: 'Ring for one eye, cross for the other',
-    drawTarget1: drawRing,    // Default: red (left eye via green lens)
-    drawTarget2: drawCross,   // Default: green (right eye via red lens)
+    drawTarget1: drawRing,
+    drawTarget2: drawCross,
   },
   'cross-ring': {
     name: 'Cross & Ring',
@@ -87,16 +155,27 @@ export const targetPresets = {
     drawTarget1: drawCross,
     drawTarget2: drawRing,
   },
+  'triangle-square': {
+    name: 'Triangle & Square (House)',
+    description: 'Triangle roof + square base — aligned they form a house',
+    drawTarget1: drawTriangleRoof,
+    drawTarget2: drawSquareBase,
+  },
+  'vert-horiz': {
+    name: 'Vertical & Horizontal (Plus)',
+    description: 'Vertical line + horizontal line — aligned they form a plus sign',
+    drawTarget1: drawVerticalLine,
+    drawTarget2: drawHorizontalLine,
+  },
+  'paragraph': {
+    name: 'Alternating Word Paragraph',
+    description: 'Text paragraph with alternating colored words',
+    customRender: true,
+  },
 };
 
-/**
- * Get target colors based on eye-color mapping configuration.
- * Red lens on right eye → right eye sees green target.
- * Green lens on left eye → left eye sees red target.
- */
-/**
- * Scale a hex color by an intensity percentage (0-100).
- */
+// --- Color utilities ---
+
 function scaleColor(hex, intensity) {
   const pct = Math.max(0, Math.min(100, intensity)) / 100;
   const r = Math.round(parseInt(hex.slice(1, 3), 16) * pct);
@@ -116,37 +195,21 @@ export function getTargetColors(config) {
   };
 }
 
-/**
- * Draw anti-bleed background compensation.
- * Fills the entire canvas with a dim version of both target colors to raise
- * baseline luminance through each filter, masking bleed-through brightness.
- */
 export function drawAntiBleedBackground(ctx, w, h, config) {
   const level = config.antiBleedLevel || 0;
   if (level <= 0) return;
-
   const redBase = config.redColor || '#FF0000';
   const greenBase = config.greenColor || '#00FF00';
-
-  // Draw dim red fill across entire screen
   ctx.fillStyle = scaleColor(redBase, level);
   ctx.fillRect(0, 0, w, h);
-
-  // Draw dim green fill on top (additive via lighter composite)
   ctx.globalCompositeOperation = 'lighter';
   ctx.fillStyle = scaleColor(greenBase, level);
   ctx.fillRect(0, 0, w, h);
   ctx.globalCompositeOperation = 'source-over';
 }
 
-/**
- * Render all targets on canvas based on session state.
- * @param {CanvasRenderingContext2D} ctx
- * @param {Object} state - session state
- * @param {number} centerX - canvas center X
- * @param {number} centerY - canvas center Y
- * @param {Object} options - { showFixation, showRed, showGreen, flashActive, scale }
- */
+// --- Main render function ---
+
 export function renderTargets(ctx, state, centerX, centerY, options = {}) {
   const {
     showFixation = true,
@@ -154,8 +217,9 @@ export function renderTargets(ctx, state, centerX, centerY, options = {}) {
     showGreen = true,
     flashActive = false,
     scale = 1,
-    displayType = 'distance', // 'distance' or 'near'
+    displayType = 'distance',
     canvasHeight = 0,
+    canvasWidth = 0,
   } = options;
 
   const config = state.config;
@@ -169,14 +233,12 @@ export function renderTargets(ctx, state, centerX, centerY, options = {}) {
   const strokeWidth = (config.strokeWidth || 4) * scale;
   const lockSize = (config.fixationLockSizePx || 30) * scale;
 
-  // Determine which target is red and which is green
-  // target1 = red (movable by default), target2 = green (fixed by default)
   const movableX = centerX + targets.movableX * scale;
   const movableY = centerY + targets.movableY * scale;
   const fixedX = centerX + targets.fixedX * scale;
   const fixedY = centerY + targets.fixedY * scale;
 
-  // Draw fixation lock in upper 1/3 of screen (visible to both eyes - white)
+  // Draw fixation lock in upper 1/3 of screen
   const lockY = canvasHeight > 0 ? canvasHeight / 3 : centerY;
   if (showFixation) {
     const lockMode = config.fixationLockMode;
@@ -187,7 +249,46 @@ export function renderTargets(ctx, state, centerX, centerY, options = {}) {
     }
   }
 
-  // Draw red target (movable by default)
+  // --- Paragraph preset: custom interleaved word rendering ---
+  if (preset.customRender && config.targetPreset === 'paragraph') {
+    const fontSize = displayType === 'near'
+      ? (config.paragraphFontSizeNear || 15)
+      : (config.paragraphFontSizeDistance || 56);
+    const scaledFontSize = fontSize * scale;
+    const w = canvasWidth || centerX * 2;
+    const maxWidth = w * 0.75;
+    const startX = centerX - maxWidth / 2;
+    const startY = centerY - scaledFontSize * 3; // start above center
+
+    ctx.font = `${scaledFontSize}px sans-serif`;
+    ctx.textBaseline = 'top';
+
+    const layout = layoutParagraph(ctx, scaledFontSize, maxWidth, startX, startY);
+
+    for (const item of layout) {
+      const isOdd = item.index % 2 === 1;
+      // Odd-indexed words = color1 (red by default, movable)
+      // Even-indexed words = color2 (green by default, fixed)
+      const isMovableColor = targets.movableIsRed ? !isOdd : isOdd;
+
+      if (isMovableColor) {
+        // This word belongs to the movable target color
+        if (!showRed && targets.movableIsRed) continue;
+        if (!showGreen && !targets.movableIsRed) continue;
+        ctx.fillStyle = targets.movableIsRed ? colors.redTargetColor : colors.greenTargetColor;
+        ctx.fillText(item.word, item.x + targets.movableX * scale, item.y + targets.movableY * scale);
+      } else {
+        // This word belongs to the fixed target color
+        if (!showGreen && targets.movableIsRed) continue;
+        if (!showRed && !targets.movableIsRed) continue;
+        ctx.fillStyle = targets.movableIsRed ? colors.greenTargetColor : colors.redTargetColor;
+        ctx.fillText(item.word, item.x + targets.fixedX * scale, item.y + targets.fixedY * scale);
+      }
+    }
+    return;
+  }
+
+  // --- Standard two-target presets ---
   if (showRed) {
     if (targets.movableIsRed) {
       preset.drawTarget1(ctx, movableX, movableY, targetSize / 2, colors.redTargetColor, strokeWidth);
@@ -196,7 +297,6 @@ export function renderTargets(ctx, state, centerX, centerY, options = {}) {
     }
   }
 
-  // Draw green target (fixed by default)
   if (showGreen) {
     if (targets.movableIsRed) {
       preset.drawTarget2(ctx, fixedX, fixedY, targetSize / 2, colors.greenTargetColor, strokeWidth);

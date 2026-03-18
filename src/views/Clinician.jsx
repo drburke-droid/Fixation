@@ -353,6 +353,9 @@ export default function Clinician() {
                 onChange={e => handleUpdateConfig({ targetPreset: e.target.value })}>
                 <option value="ring-cross">Ring &amp; Cross</option>
                 <option value="cross-ring">Cross &amp; Ring</option>
+                <option value="triangle-square">House (Triangle+Square)</option>
+                <option value="vert-horiz">Plus (Vert+Horiz Lines)</option>
+                <option value="paragraph">Alternating Word Paragraph</option>
               </select>
             </div>
             <div>
@@ -385,6 +388,24 @@ export default function Clinician() {
                 style={{ width: '100%' }} />
             </div>
           </div>
+          {session.config.targetPreset === 'paragraph' && (
+            <div className="field-row" style={{ marginBottom: 8 }}>
+              <div>
+                <label>Paragraph Font Dist (px)</label>
+                <input type="number" value={session.config.paragraphFontSizeDistance}
+                  onChange={e => handleUpdateConfig({ paragraphFontSizeDistance: Number(e.target.value) })}
+                  style={{ width: '100%' }} />
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>56 ≈ 20/30 on 55" 4K @ 25ft</span>
+              </div>
+              <div>
+                <label>Paragraph Font Near (px)</label>
+                <input type="number" value={session.config.paragraphFontSizeNear}
+                  onChange={e => handleUpdateConfig({ paragraphFontSizeNear: Number(e.target.value) })}
+                  style={{ width: '100%' }} />
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>15 ≈ 11pt</span>
+              </div>
+            </div>
+          )}
           <div className="field-row" style={{ marginBottom: 8 }}>
             <div>
               <label>Display PPI</label>

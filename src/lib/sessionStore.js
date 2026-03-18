@@ -30,6 +30,8 @@ const defaultConfig = {
   redIntensity: 100,      // 0-100% target brightness
   greenIntensity: 100,
   antiBleedLevel: 0,      // 0-50: dim background fill of both colors to mask bleed-through
+  paragraphFontSizeDistance: 56, // px, ~20/30 on 55" 4K at 25ft
+  paragraphFontSizeNear: 15,    // px, ~11pt on tablet
   mirrorDistance: true,
   displayPPI: 96,
   nearDisplayPPI: 132,

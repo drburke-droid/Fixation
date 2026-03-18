@@ -41,7 +41,7 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
         showGreen,
         flashActive,
         displayType: phase === 'color-cal-near' ? 'near' : 'distance',
-        canvasHeight: h,
+        canvasHeight: h, canvasWidth: w,
       });
       // Label which color is shown
       ctx.fillStyle = '#555';
@@ -55,7 +55,7 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
       const showRed = suppStep === 'red' || suppStep === 'both';
       const showGreen = suppStep === 'green' || suppStep === 'both';
       renderTargets(ctx, state, centerX, centerY, {
-        showFixation: true, showRed, showGreen, flashActive, displayType, canvasHeight: h,
+        showFixation: true, showRed, showGreen, flashActive, displayType, canvasHeight: h, canvasWidth: w,
       });
     }
     // Transition animation
@@ -63,13 +63,13 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
       const scale = 1 + transitionProgress * 1.5;
       const yShift = transitionProgress * h * 0.3;
       renderTargets(ctx, state, centerX, centerY + yShift, {
-        showFixation: true, showRed: true, showGreen: true, flashActive, scale, displayType, canvasHeight: h,
+        showFixation: true, showRed: true, showGreen: true, flashActive, scale, displayType, canvasHeight: h, canvasWidth: w,
       });
     }
     // Alignment phases
     else if (phase === 'distance-align' || phase === 'near-align') {
       renderTargets(ctx, state, centerX, centerY, {
-        showFixation: true, showRed: true, showGreen: true, flashActive, displayType, canvasHeight: h,
+        showFixation: true, showRed: true, showGreen: true, flashActive, displayType, canvasHeight: h, canvasWidth: w,
       });
     }
     // Calibration phases
@@ -92,7 +92,7 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
       ctx.stroke();
 
       renderTargets(ctx, state, centerX, centerY, {
-        showFixation: true, showRed: true, showGreen: true, flashActive, displayType, canvasHeight: h,
+        showFixation: true, showRed: true, showGreen: true, flashActive, displayType, canvasHeight: h, canvasWidth: w,
       });
     }
     // Idle / waiting
