@@ -5,7 +5,7 @@ import { renderTargets } from '../lib/targets';
  * Full-screen canvas for rendering dissociated targets and fixation lock.
  * Used by both distance and near display clients.
  */
-export default function TargetCanvas({ state, flashActive = false, transitionProgress = null }) {
+export default function TargetCanvas({ state, flashActive = false, transitionProgress = null, displayType = 'distance' }) {
   const canvasRef = useRef(null);
   const animRef = useRef(null);
 
@@ -25,42 +25,49 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
 
     const phase = state.phase;
 
-    // During suppression check, selectively show targets
-    if (phase === 'suppression') {
-      const suppStep = state._suppressionStep || 'both';
-      const showRed = suppStep === 'red' || suppStep === 'both';
-      const showGreen = suppStep === 'green' || suppStep === 'both';
+    // Color calibration — show one target at a time for dissociation verification
+    if (phase === 'color-cal-distance' || phase === 'color-cal-near') {
+      const step = state.colorCalibration?.step || 'red';
+      const showRed = step === 'red';
+      const showGreen = step === 'green';
       renderTargets(ctx, state, centerX, centerY, {
         showFixation: true,
         showRed,
         showGreen,
         flashActive,
+        displayType: phase === 'color-cal-near' ? 'near' : 'distance',
+      });
+      // Label which color is shown
+      ctx.fillStyle = '#555';
+      ctx.font = '14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`Color calibration: ${step.toUpperCase()} target only`, centerX, h - 30);
+    }
+    // Suppression check — selectively show targets
+    else if (phase === 'suppression') {
+      const suppStep = state._suppressionStep || 'both';
+      const showRed = suppStep === 'red' || suppStep === 'both';
+      const showGreen = suppStep === 'green' || suppStep === 'both';
+      renderTargets(ctx, state, centerX, centerY, {
+        showFixation: true, showRed, showGreen, flashActive, displayType,
       });
     }
-    // During transition animation
+    // Transition animation
     else if (phase === 'transition' && transitionProgress !== null) {
       const scale = 1 + transitionProgress * 1.5;
       const yShift = transitionProgress * h * 0.3;
       renderTargets(ctx, state, centerX, centerY + yShift, {
-        showFixation: true,
-        showRed: true,
-        showGreen: true,
-        flashActive,
-        scale,
+        showFixation: true, showRed: true, showGreen: true, flashActive, scale, displayType,
       });
     }
-    // Normal alignment phases
+    // Alignment phases
     else if (phase === 'distance-align' || phase === 'near-align') {
       renderTargets(ctx, state, centerX, centerY, {
-        showFixation: true,
-        showRed: true,
-        showGreen: true,
-        flashActive,
+        showFixation: true, showRed: true, showGreen: true, flashActive, displayType,
       });
     }
     // Calibration phases
     else if (phase?.startsWith('calibration')) {
-      // Show a calibration crosshair
       ctx.strokeStyle = '#FFFFFF';
       ctx.lineWidth = 1;
       ctx.setLineDash([5, 5]);
@@ -72,27 +79,21 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Show center marker
       ctx.beginPath();
       ctx.arc(centerX, centerY, 10, 0, Math.PI * 2);
       ctx.strokeStyle = '#FFFF00';
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // Show calibration target if movable
       renderTargets(ctx, state, centerX, centerY, {
-        showFixation: true,
-        showRed: true,
-        showGreen: true,
-        flashActive,
+        showFixation: true, showRed: true, showGreen: true, flashActive, displayType,
       });
     }
-    // Idle / waiting phases — show phase-appropriate status
+    // Idle / waiting
     else {
       ctx.textAlign = 'center';
       ctx.fillStyle = '#555';
       ctx.font = '16px sans-serif';
-
       const messages = {
         'setup': 'Connected — waiting for session to start',
         'pairing': 'Connected — waiting for all devices',
@@ -103,29 +104,23 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
     }
 
     animRef.current = requestAnimationFrame(draw);
-  }, [state, flashActive, transitionProgress]);
+  }, [state, flashActive, transitionProgress, displayType]);
 
-  // Handle resize
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const resize = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
     };
-
     resize();
     window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
   }, []);
 
-  // Animation loop
   useEffect(() => {
     animRef.current = requestAnimationFrame(draw);
-    return () => {
-      if (animRef.current) cancelAnimationFrame(animRef.current);
-    };
+    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
   }, [draw]);
 
   return (

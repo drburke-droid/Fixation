@@ -98,7 +98,7 @@ export default function DistanceDisplay() {
 
   return (
     <div className="display-fullscreen" onClick={handleClick}>
-      <TargetCanvas state={state} flashActive={flashActive} transitionProgress={transitionProgress} />
+      <TargetCanvas state={state} flashActive={flashActive} transitionProgress={transitionProgress} displayType="distance" />
     </div>
   );
 }

@@ -82,7 +82,7 @@ export default function NearDisplay() {
 
   return (
     <div className="display-fullscreen" onClick={handleClick}>
-      <TargetCanvas state={state} flashActive={flashActive} />
+      <TargetCanvas state={state} flashActive={flashActive} displayType="near" />
     </div>
   );
 }

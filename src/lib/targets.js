@@ -95,12 +95,9 @@ export const targetPresets = {
  * Green lens on left eye → left eye sees red target.
  */
 export function getTargetColors(config) {
-  // Default: right eye sees green, left eye sees red
-  // Red target = visible through green lens = left eye
-  // Green target = visible through red lens = right eye
   return {
-    redTargetColor: '#FF0000',   // Seen by left eye (through green lens)
-    greenTargetColor: '#00FF00', // Seen by right eye (through red lens)
+    redTargetColor: config.redColor || '#FF0000',
+    greenTargetColor: config.greenColor || '#00FF00',
   };
 }
 
@@ -119,15 +116,19 @@ export function renderTargets(ctx, state, centerX, centerY, options = {}) {
     showGreen = true,
     flashActive = false,
     scale = 1,
+    displayType = 'distance', // 'distance' or 'near'
   } = options;
 
   const config = state.config;
   const targets = state.targets;
   const preset = targetPresets[config.targetPreset] || targetPresets['ring-cross'];
   const colors = getTargetColors(config);
-  const targetSize = (config.targetSizePx || 80) * scale;
-  const strokeWidth = (config.strokeWidth || 3) * scale;
-  const lockSize = (config.fixationLockSizePx || 20) * scale;
+  const baseSizePx = displayType === 'near'
+    ? (config.nearTargetSizePx || 80)
+    : (config.distanceTargetSizePx || 160);
+  const targetSize = baseSizePx * scale;
+  const strokeWidth = (config.strokeWidth || 4) * scale;
+  const lockSize = (config.fixationLockSizePx || 30) * scale;
 
   // Determine which target is red and which is green
   // target1 = red (movable by default), target2 = green (fixed by default)

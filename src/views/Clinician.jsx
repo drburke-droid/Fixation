@@ -12,6 +12,8 @@ import { renderTargets } from '../lib/targets';
 const PHASES = [
   { key: 'setup', label: 'Setup' },
   { key: 'pairing', label: 'Pairing' },
+  { key: 'color-cal-distance', label: 'Color Cal (Dist)' },
+  { key: 'color-cal-near', label: 'Color Cal (Near)' },
   { key: 'suppression', label: 'Suppression Check' },
   { key: 'calibration-distance', label: 'Distance Calibration' },
   { key: 'calibration-near', label: 'Near Calibration' },
@@ -349,13 +351,19 @@ export default function Clinician() {
           </div>
           <div className="field-row" style={{ marginBottom: 8 }}>
             <div>
-              <label>Target Size (px)</label>
-              <input type="number" value={session.config.targetSizePx}
-                onChange={e => handleUpdateConfig({ targetSizePx: Number(e.target.value) })}
+              <label>Distance Target (px)</label>
+              <input type="number" value={session.config.distanceTargetSizePx}
+                onChange={e => handleUpdateConfig({ distanceTargetSizePx: Number(e.target.value) })}
                 style={{ width: '100%' }} />
             </div>
             <div>
-              <label>Stroke Width</label>
+              <label>Near Target (px)</label>
+              <input type="number" value={session.config.nearTargetSizePx}
+                onChange={e => handleUpdateConfig({ nearTargetSizePx: Number(e.target.value) })}
+                style={{ width: '100%' }} />
+            </div>
+            <div>
+              <label>Stroke</label>
               <input type="number" value={session.config.strokeWidth}
                 onChange={e => handleUpdateConfig({ strokeWidth: Number(e.target.value) })}
                 style={{ width: '100%' }} />
@@ -473,6 +481,100 @@ export default function Clinician() {
           </div>
         )}
 
+        {/* Color Calibration */}
+        {(currentPhase === 'color-cal-distance' || currentPhase === 'color-cal-near') && (
+          <div className="panel">
+            <h3>Color Calibration — {currentPhase === 'color-cal-distance' ? 'Distance' : 'Near'}</h3>
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 8 }}>
+              Verify red/green dissociation. Show each target and confirm the correct eye cannot see it through its matching lens.
+            </p>
+            <div className="btn-row" style={{ marginBottom: 10 }}>
+              <button
+                className={session.colorCalibration?.step === 'red' ? 'accent' : ''}
+                onClick={() => updateSession(prev => ({
+                  ...prev,
+                  colorCalibration: { ...prev.colorCalibration, step: 'red' },
+                }))}>
+                Show RED Only
+              </button>
+              <button
+                className={session.colorCalibration?.step === 'green' ? 'accent' : ''}
+                onClick={() => updateSession(prev => ({
+                  ...prev,
+                  colorCalibration: { ...prev.colorCalibration, step: 'green' },
+                }))}>
+                Show GREEN Only
+              </button>
+            </div>
+            <div style={{ fontSize: '12px', marginBottom: 10, padding: '8px', background: 'var(--bg-tertiary)', borderRadius: 6 }}>
+              {session.colorCalibration?.step === 'red' ? (
+                <>
+                  <div style={{ color: '#ff6666', marginBottom: 4 }}>RED target displayed</div>
+                  <div>Patient through <b>RED lens</b>: should <b>NOT</b> see target</div>
+                  <div>Patient through <b>GREEN lens</b>: should see target</div>
+                </>
+              ) : (
+                <>
+                  <div style={{ color: '#66ff66', marginBottom: 4 }}>GREEN target displayed</div>
+                  <div>Patient through <b>GREEN lens</b>: should <b>NOT</b> see target</div>
+                  <div>Patient through <b>RED lens</b>: should see target</div>
+                </>
+              )}
+            </div>
+            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 6 }}>
+              Adjust colors if target bleeds through wrong lens:
+            </div>
+            <div className="field-row" style={{ marginBottom: 8 }}>
+              <div>
+                <label>Red Color</label>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input type="color" value={session.config.redColor}
+                    onChange={e => handleUpdateConfig({ redColor: e.target.value })}
+                    style={{ width: 36, height: 30, padding: 2 }} />
+                  <input value={session.config.redColor}
+                    onChange={e => handleUpdateConfig({ redColor: e.target.value })}
+                    style={{ width: 80 }} />
+                </div>
+              </div>
+              <div>
+                <label>Green Color</label>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input type="color" value={session.config.greenColor}
+                    onChange={e => handleUpdateConfig({ greenColor: e.target.value })}
+                    style={{ width: 36, height: 30, padding: 2 }} />
+                  <input value={session.config.greenColor}
+                    onChange={e => handleUpdateConfig({ greenColor: e.target.value })}
+                    style={{ width: 80 }} />
+                </div>
+              </div>
+            </div>
+            <div className="btn-row">
+              <button className="primary" onClick={() => {
+                const key = currentPhase === 'color-cal-distance' ? 'distanceCompleted' : 'nearCompleted';
+                updateSession(prev => ({
+                  ...prev,
+                  colorCalibration: { ...prev.colorCalibration, [key]: true },
+                }));
+              }}>
+                Dissociation Confirmed
+              </button>
+              <button className="danger" onClick={() => {
+                const key = currentPhase === 'color-cal-distance' ? 'distanceCompleted' : 'nearCompleted';
+                updateSession(prev => ({
+                  ...prev,
+                  colorCalibration: { ...prev.colorCalibration, [key]: false },
+                }));
+              }}>
+                Bleed-through Detected
+              </button>
+            </div>
+            <div style={{ marginTop: 6, fontSize: '11px', color: 'var(--text-muted)' }}>
+              Distance: {session.colorCalibration?.distanceCompleted ? 'Confirmed' : 'Pending'} |{' '}
+              Near: {session.colorCalibration?.nearCompleted ? 'Confirmed' : 'Pending'}
+            </div>
+          </div>
+        )}
+
         {/* Calibration */}
         {currentPhase?.startsWith('calibration') && (
           <div className="panel">
@@ -559,8 +661,8 @@ export default function Clinician() {
             <div><span style={{ color: 'var(--text-secondary)' }}>Target Y: </span>
               <span style={{ fontFamily: 'monospace', color: 'var(--accent)' }}>
                 {session.targets.movableY.toFixed(1)} px</span></div>
-            <div><span style={{ color: 'var(--text-secondary)' }}>Target Size: </span>
-              {session.config.targetSizePx} px</div>
+            <div><span style={{ color: 'var(--text-secondary)' }}>Size: </span>
+              D:{session.config.distanceTargetSizePx} / N:{session.config.nearTargetSizePx} px</div>
           </div>
         </div>
 

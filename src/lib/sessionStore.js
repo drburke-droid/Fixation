@@ -20,10 +20,13 @@ const defaultConfig = {
   fixationLockMode: 'always',
   movementSensitivity: 'normal',
   repeatTrials: true,
-  targetSizePx: 80,
-  strokeWidth: 3,
-  fixationLockSizePx: 20,
+  distanceTargetSizePx: 160,
+  nearTargetSizePx: 80,
+  strokeWidth: 4,
+  fixationLockSizePx: 30,
   backgroundColor: '#000000',
+  redColor: '#FF0000',
+  greenColor: '#00FF00',
   displayPPI: 96,
   nearDisplayPPI: 132,
   displayWidthMm: null,
@@ -58,6 +61,11 @@ export function createSession({ patientId = '', examiner = '', config = {} } = {
       distance: { completed: false, centerX: 0, centerY: 0, offsetX: 0, offsetY: 0 },
       near: { completed: false, centerX: 0, centerY: 0, offsetX: 0, offsetY: 0 },
       handoff: { completed: false },
+    },
+    colorCalibration: {
+      distanceCompleted: false,
+      nearCompleted: false,
+      step: 'red',  // 'red' | 'green' — which target is currently shown
     },
     targets: {
       fixedX: 0,
