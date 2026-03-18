@@ -59,9 +59,13 @@ export default function Clinician() {
   const [showCalibration, setShowCalibration] = useState(false);
   const [showPairing, setShowPairing] = useState(true);
 
+  // Stable message handler ref — avoids TDZ issues with minified builds
+  const peerMessageHandlerRef = useRef(null);
+
   // Timer for eyes-open duration
   useEffect(() => {
-    if (trialState !== 'adjusting' || !eyesOpenTime) return;
+    if (trialState !== 'adjusting' && trialState !== 'tracking') return;
+    if (!eyesOpenTime) return;
     const iv = setInterval(() => setElapsed(Date.now() - eyesOpenTime), 100);
     return () => clearInterval(iv);
   }, [trialState, eyesOpenTime]);
@@ -120,22 +124,7 @@ export default function Clinician() {
           setSession({ ...next });
         }
       },
-      (msg) => {
-        const s = sessionRef.current;
-        if (!s) return;
-        if (msg.type === 'move-target') {
-          const next = moveTarget(s, msg.dx, msg.dy);
-          sessionRef.current = next;
-          setSession({ ...next });
-          hostRef.current?.broadcast({
-            type: 'target-moved',
-            x: next.targets.movableX,
-            y: next.targets.movableY,
-          });
-        } else if (msg.type === 'double-tap') {
-          doubleTapHandlerRef.current?.();
-        }
-      },
+      (msg) => peerMessageHandlerRef.current?.(msg),
       roomName.trim(),
       (statusMsg) => setHostStatus(statusMsg),
     ).then((host) => {
@@ -375,6 +364,24 @@ export default function Clinician() {
     if (!session) return null;
     return getPrismLabels(session.targets.movableX, session.targets.movableY, session.config, session.targets);
   }, [session]);
+
+  // --- Stable message handler (set AFTER all callbacks are defined to avoid TDZ) ---
+  peerMessageHandlerRef.current = (msg) => {
+    const s = sessionRef.current;
+    if (!s) return;
+    if (msg.type === 'move-target') {
+      const next = moveTarget(s, msg.dx, msg.dy);
+      sessionRef.current = next;
+      setSession({ ...next });
+      hostRef.current?.broadcast({
+        type: 'target-moved',
+        x: next.targets.movableX,
+        y: next.targets.movableY,
+      });
+    } else if (msg.type === 'double-tap') {
+      doubleTapHandlerRef.current?.();
+    }
+  };
 
   // --- Computed stats ---
   const distTrials = session?.trials.filter(t => t.phase === 'distance') || [];
@@ -970,20 +977,7 @@ export default function Clinician() {
                   setSession({ ...next });
                 }
               },
-              (msg) => {
-                const ss = sessionRef.current;
-                if (!ss) return;
-                if (msg.type === 'move-target') {
-                  const next = moveTarget(ss, msg.dx, msg.dy);
-                  sessionRef.current = next;
-                  setSession({ ...next });
-                  hostRef.current?.broadcast({
-                    type: 'target-moved', x: next.targets.movableX, y: next.targets.movableY,
-                  });
-                } else if (msg.type === 'double-tap') {
-                  doubleTapHandlerRef.current?.();
-                }
-              },
+              (msg) => peerMessageHandlerRef.current?.(msg),
               roomName.trim(),
               (statusMsg) => setHostStatus(statusMsg),
             ).then((host) => {
