@@ -1177,7 +1177,7 @@ function ClinicianPreview({ session }) {
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, w, h);
       renderTargets(ctx, session, w / 2, h / 2, {
-        showFixation: true, showRed: true, showGreen: true, scale: 0.4,
+        showFixation: true, showRed: true, showGreen: true, scale: 0.1,
         canvasHeight: h, canvasWidth: w,
       });
       animRef.current = requestAnimationFrame(draw);
