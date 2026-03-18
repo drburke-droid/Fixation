@@ -9,9 +9,11 @@ import { Peer } from 'peerjs';
  * Create a PeerJS host (clinician side).
  * Returns a promise that resolves with { peer, peerId, connections, broadcast, destroy }.
  */
-export function createHost(onPeerConnect, onPeerDisconnect, onMessage) {
+export function createHost(onPeerConnect, onPeerDisconnect, onMessage, customId = null) {
   return new Promise((resolve, reject) => {
-    const peer = new Peer();
+    // Use custom ID prefixed with 'fdq-' for namespace, or let PeerJS auto-generate
+    const peerId = customId ? `fdq-${customId}` : undefined;
+    const peer = peerId ? new Peer(peerId) : new Peer();
     const connections = new Map(); // role -> DataConnection
 
     peer.on('open', (id) => {

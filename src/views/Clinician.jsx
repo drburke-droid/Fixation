@@ -33,11 +33,14 @@ export default function Clinician() {
   const [baseUrl, setBaseUrl] = useState('');
 
   // Setup form
+  const [roomName, setRoomName] = useState('lane1');
   const [patientId, setPatientId] = useState('');
   const [examiner, setExaminer] = useState('');
   const [summaryText, setSummaryText] = useState('');
   const [copySuccess, setCopySuccess] = useState(false);
   const [suppressionStep, setSuppressionStep] = useState('red');
+  const [peerError, setPeerError] = useState(null);
+  const [connecting, setConnecting] = useState(false);
 
   // Helper: update session state + broadcast to peers
   const updateSession = useCallback((updater) => {
@@ -57,26 +60,30 @@ export default function Clinician() {
     setBaseUrl(`${origin}${path}#`);
   }, []);
 
-  // Initialize PeerJS host
+  // Cleanup peer on unmount
   useEffect(() => {
-    let destroyed = false;
+    return () => { hostRef.current?.destroy(); };
+  }, []);
+
+  // --- Actions ---
+  const handleCreateSession = useCallback(() => {
+    if (!roomName.trim()) return;
+    setConnecting(true);
+    setPeerError(null);
 
     createHost(
       // onPeerConnect
       (role) => {
-        if (destroyed) return;
         const s = sessionRef.current;
         if (s) {
           const next = setClientConnected(s, role, true);
           sessionRef.current = next;
           setSession({ ...next });
-          // Send current state to newly connected peer
           hostRef.current?.sendTo(role, { type: 'state-updated', state: next });
         }
       },
       // onPeerDisconnect
       (role) => {
-        if (destroyed) return;
         const s = sessionRef.current;
         if (s) {
           const next = setClientConnected(s, role, false);
@@ -86,16 +93,13 @@ export default function Clinician() {
       },
       // onMessage
       (msg) => {
-        if (destroyed) return;
         const s = sessionRef.current;
         if (!s) return;
-
         switch (msg.type) {
           case 'move-target': {
             const next = moveTarget(s, msg.dx, msg.dy);
             sessionRef.current = next;
             setSession({ ...next });
-            // Broadcast low-latency target position to displays
             hostRef.current?.broadcast({
               type: 'target-moved',
               x: next.targets.movableX,
@@ -103,29 +107,30 @@ export default function Clinician() {
             });
             break;
           }
-          // join is handled by onPeerConnect
           default:
             break;
         }
       },
+      // customId — use room name for stable URLs
+      roomName.trim(),
     ).then((host) => {
-      if (destroyed) { host.destroy(); return; }
       hostRef.current = host;
       setPeerId(host.peerId);
-    }).catch(err => console.error('Failed to create host:', err));
-
-    return () => {
-      destroyed = true;
-      hostRef.current?.destroy();
-    };
-  }, []);
-
-  // --- Actions ---
-  const handleCreateSession = useCallback(() => {
-    const s = createSession({ patientId, examiner });
-    sessionRef.current = s;
-    setSession({ ...s });
-  }, [patientId, examiner]);
+      setConnecting(false);
+      // Create the session once peer is ready
+      const s = createSession({ patientId, examiner });
+      sessionRef.current = s;
+      setSession({ ...s });
+    }).catch(err => {
+      console.error('Failed to create host:', err);
+      setConnecting(false);
+      if (err?.type === 'unavailable-id') {
+        setPeerError(`Room "${roomName}" is already in use. Choose a different name or wait a moment.`);
+      } else {
+        setPeerError(`Connection failed: ${err?.message || err}`);
+      }
+    });
+  }, [patientId, examiner, roomName]);
 
   const handleAdvancePhase = useCallback((phase) => {
     updateSession(prev => {
@@ -208,16 +213,19 @@ export default function Clinician() {
         </p>
         <div className="panel">
           <h3>New Session</h3>
-          {!peerId && (
-            <p style={{ color: 'var(--warning)', fontSize: '12px', marginBottom: 8 }}>
-              Connecting to signaling server...
+          {peerError && (
+            <p style={{ color: 'var(--danger)', fontSize: '12px', marginBottom: 8 }}>
+              {peerError}
             </p>
           )}
-          {peerId && (
-            <p style={{ color: 'var(--success)', fontSize: '12px', marginBottom: 8 }}>
-              Peer-to-peer ready (ID: {peerId})
-            </p>
-          )}
+          <div className="field-group">
+            <label>Room Name (stable URL identifier)</label>
+            <input value={roomName} onChange={e => setRoomName(e.target.value)}
+              placeholder="e.g. lane1, exam-room-2" style={{ width: '100%' }} />
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+              Display URLs stay the same as long as this name doesn't change
+            </span>
+          </div>
           <div className="field-group">
             <label>Patient ID (optional)</label>
             <input value={patientId} onChange={e => setPatientId(e.target.value)}
@@ -229,8 +237,8 @@ export default function Clinician() {
               placeholder="Your name" style={{ width: '100%' }} />
           </div>
           <button className="primary" onClick={handleCreateSession}
-            disabled={!peerId} style={{ marginTop: 8 }}>
-            Start Session
+            disabled={connecting || !roomName.trim()} style={{ marginTop: 8 }}>
+            {connecting ? 'Connecting...' : 'Start Session'}
           </button>
         </div>
       </div>
@@ -249,7 +257,7 @@ export default function Clinician() {
         <div style={{ marginBottom: 12 }}>
           <h2 style={{ fontSize: '16px', marginBottom: '2px' }}>FDQ Console</h2>
           <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-            Session: {session.sessionId} | Peer: {peerId}
+            Room: {roomName} | Session: {session.sessionId}
           </span>
         </div>
 
