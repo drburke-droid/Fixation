@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { createHost } from '../lib/peer';
 import {
@@ -6,7 +6,7 @@ import {
   resetTarget, updateConfig, updateSuppression, updateCalibration,
   captureTrial,
 } from '../lib/sessionStore';
-import { computeTrialStats, generateEMRSummary } from '../lib/measurement';
+import { computeTrialMetrics, computeTrialStats, generateEMRSummary } from '../lib/measurement';
 import { renderTargets } from '../lib/targets';
 
 const PHASES = [
@@ -14,20 +14,18 @@ const PHASES = [
   { key: 'pairing', label: 'Pairing' },
   { key: 'color-cal-distance', label: 'Color Cal (Dist)' },
   { key: 'color-cal-near', label: 'Color Cal (Near)' },
-  { key: 'suppression', label: 'Suppression Check' },
-  { key: 'calibration-distance', label: 'Distance Calibration' },
-  { key: 'calibration-near', label: 'Near Calibration' },
-  { key: 'calibration-handoff', label: 'Handoff Calibration' },
-  { key: 'distance-align', label: 'Distance Alignment' },
-  { key: 'transition', label: 'Transition to Near' },
-  { key: 'near-align', label: 'Near Alignment' },
+  { key: 'suppression', label: 'Suppression' },
+  { key: 'calibration-distance', label: 'Cal (Dist)' },
+  { key: 'calibration-near', label: 'Cal (Near)' },
+  { key: 'distance-align', label: 'Distance' },
+  { key: 'transition', label: 'Transition' },
+  { key: 'near-align', label: 'Near' },
   { key: 'results', label: 'Results' },
 ];
 
 const LOCK_MODES = ['always', 'pulse', 'flash', 'off'];
 
 export default function Clinician() {
-  // Session state — clinician is the authoritative source
   const sessionRef = useRef(null);
   const [session, setSession] = useState(null);
   const hostRef = useRef(null);
@@ -44,7 +42,23 @@ export default function Clinician() {
   const [peerError, setPeerError] = useState(null);
   const [connecting, setConnecting] = useState(false);
 
-  // Helper: update session state + broadcast to peers + persist color settings
+  // Trial workflow
+  const [trialState, setTrialState] = useState('idle'); // idle | waiting | adjusting
+  const [eyesOpenTime, setEyesOpenTime] = useState(null);
+  const [elapsed, setElapsed] = useState(0);
+
+  // Collapsible sections
+  const [showConfig, setShowConfig] = useState(false);
+  const [showCalibration, setShowCalibration] = useState(false);
+  const [showPairing, setShowPairing] = useState(true);
+
+  // Timer for eyes-open duration
+  useEffect(() => {
+    if (trialState !== 'adjusting' || !eyesOpenTime) return;
+    const iv = setInterval(() => setElapsed(Date.now() - eyesOpenTime), 100);
+    return () => clearInterval(iv);
+  }, [trialState, eyesOpenTime]);
+
   const updateSession = useCallback((updater) => {
     const prev = sessionRef.current;
     if (!prev) return;
@@ -52,7 +66,6 @@ export default function Clinician() {
     sessionRef.current = next;
     setSession({ ...next });
     hostRef.current?.broadcast({ type: 'state-updated', state: next });
-    // Persist color calibration settings to localStorage
     try {
       localStorage.setItem('fdq-color-cal', JSON.stringify({
         redColor: next.config.redColor,
@@ -62,27 +75,23 @@ export default function Clinician() {
     } catch (_) {}
   }, []);
 
-  // Compute base URL for QR codes
   useEffect(() => {
     const origin = window.location.origin;
     const path = window.location.pathname;
-    // For HashRouter, base is origin + path + #
     setBaseUrl(`${origin}${path}#`);
   }, []);
 
-  // Cleanup peer on unmount
   useEffect(() => {
     return () => { hostRef.current?.destroy(); };
   }, []);
 
-  // --- Actions ---
+  // --- Peer host + session creation ---
   const handleCreateSession = useCallback(() => {
     if (!roomName.trim()) return;
     setConnecting(true);
     setPeerError(null);
 
     createHost(
-      // onPeerConnect
       (role) => {
         const s = sessionRef.current;
         if (s) {
@@ -92,7 +101,6 @@ export default function Clinician() {
           hostRef.current?.sendTo(role, { type: 'state-updated', state: next });
         }
       },
-      // onPeerDisconnect
       (role) => {
         const s = sessionRef.current;
         if (s) {
@@ -101,33 +109,25 @@ export default function Clinician() {
           setSession({ ...next });
         }
       },
-      // onMessage
       (msg) => {
         const s = sessionRef.current;
         if (!s) return;
-        switch (msg.type) {
-          case 'move-target': {
-            const next = moveTarget(s, msg.dx, msg.dy);
-            sessionRef.current = next;
-            setSession({ ...next });
-            hostRef.current?.broadcast({
-              type: 'target-moved',
-              x: next.targets.movableX,
-              y: next.targets.movableY,
-            });
-            break;
-          }
-          default:
-            break;
+        if (msg.type === 'move-target') {
+          const next = moveTarget(s, msg.dx, msg.dy);
+          sessionRef.current = next;
+          setSession({ ...next });
+          hostRef.current?.broadcast({
+            type: 'target-moved',
+            x: next.targets.movableX,
+            y: next.targets.movableY,
+          });
         }
       },
-      // customId — use room name for stable URLs
       roomName.trim(),
     ).then((host) => {
       hostRef.current = host;
       setPeerId(host.peerId);
       setConnecting(false);
-      // Create the session once peer is ready, restore saved color calibration
       const s = createSession({ patientId, examiner });
       try {
         const saved = JSON.parse(localStorage.getItem('fdq-color-cal'));
@@ -140,31 +140,47 @@ export default function Clinician() {
       sessionRef.current = s;
       setSession({ ...s });
     }).catch(err => {
-      console.error('Failed to create host:', err);
       setConnecting(false);
       if (err?.type === 'unavailable-id') {
-        setPeerError(`Room "${roomName}" is already in use. Choose a different name or wait a moment.`);
+        setPeerError(`Room "${roomName}" is already in use.`);
       } else {
         setPeerError(`Connection failed: ${err?.message || err}`);
       }
     });
   }, [patientId, examiner, roomName]);
 
+  // --- Actions ---
   const handleAdvancePhase = useCallback((phase) => {
-    updateSession(prev => {
-      const next = setPhase(prev, phase);
-      return next;
-    });
+    updateSession(prev => setPhase(prev, phase));
   }, [updateSession]);
 
   const handleCaptureTrial = useCallback(() => {
     const s = sessionRef.current;
     if (!s) return;
+    const timeToAlignMs = eyesOpenTime ? Date.now() - eyesOpenTime : null;
     const { session: next, trial } = captureTrial(s);
-    const reset = { ...next, targets: { ...next.targets, movableX: 0, movableY: 0 } };
-    sessionRef.current = reset;
-    setSession({ ...reset });
-    hostRef.current?.broadcast({ type: 'state-updated', state: reset });
+    // Add time-to-align to the trial
+    if (timeToAlignMs !== null) {
+      next.trials[next.trials.length - 1].timeToAlignMs = timeToAlignMs;
+    }
+    sessionRef.current = next;
+    setSession({ ...next });
+    hostRef.current?.broadcast({ type: 'state-updated', state: next });
+    setTrialState('idle');
+    setEyesOpenTime(null);
+    setElapsed(0);
+  }, [eyesOpenTime]);
+
+  const handleNewTrial = useCallback(() => {
+    updateSession(prev => resetTarget(prev));
+    setTrialState('waiting');
+    setEyesOpenTime(null);
+    setElapsed(0);
+  }, [updateSession]);
+
+  const handleEyesOpen = useCallback(() => {
+    setTrialState('adjusting');
+    setEyesOpenTime(Date.now());
   }, []);
 
   const handleFlashLock = useCallback(() => {
@@ -198,12 +214,9 @@ export default function Clinician() {
   const handleGenerateSummary = useCallback(() => {
     const s = sessionRef.current;
     if (!s) return;
-    const distTrials = s.trials.filter(t => t.phase === 'distance');
-    const nearTrials = s.trials.filter(t => t.phase === 'near');
-    const distStats = computeTrialStats(distTrials);
-    const nearStats = computeTrialStats(nearTrials);
-    const text = generateEMRSummary(s, distStats, nearStats);
-    setSummaryText(text);
+    const dt = s.trials.filter(t => t.phase === 'distance');
+    const nt = s.trials.filter(t => t.phase === 'near');
+    setSummaryText(generateEMRSummary(s, computeTrialStats(dt), computeTrialStats(nt)));
   }, []);
 
   const handleCopyToClipboard = useCallback(() => {
@@ -213,15 +226,26 @@ export default function Clinician() {
     });
   }, [summaryText]);
 
-  // Computed stats
+  // --- Live prism computation ---
+  const livePrism = useMemo(() => {
+    if (!session) return null;
+    const phase = session.phase;
+    const isNear = phase === 'near-align' || phase === 'color-cal-near' || phase === 'calibration-near';
+    const ppi = isNear ? session.config.nearDisplayPPI : session.config.displayPPI;
+    const dist = isNear ? session.config.nearDistanceMm : session.config.distanceOpticalDistanceMm;
+    return computeTrialMetrics(session.targets.movableX, session.targets.movableY, ppi, dist);
+  }, [session]);
+
+  // --- Computed stats ---
   const distTrials = session?.trials.filter(t => t.phase === 'distance') || [];
   const nearTrials = session?.trials.filter(t => t.phase === 'near') || [];
   const distStats = computeTrialStats(distTrials);
   const nearStats = computeTrialStats(nearTrials);
   const currentPhase = session?.phase || 'setup';
   const phaseIndex = PHASES.findIndex(p => p.key === currentPhase);
+  const isAlignPhase = currentPhase === 'distance-align' || currentPhase === 'near-align';
 
-  // --- No session yet ---
+  // ========== NO SESSION ==========
   if (!session) {
     return (
       <div style={{ maxWidth: 600, margin: '40px auto', padding: '0 20px' }}>
@@ -231,28 +255,19 @@ export default function Clinician() {
         </p>
         <div className="panel">
           <h3>New Session</h3>
-          {peerError && (
-            <p style={{ color: 'var(--danger)', fontSize: '12px', marginBottom: 8 }}>
-              {peerError}
-            </p>
-          )}
+          {peerError && <p style={{ color: 'var(--danger)', fontSize: '12px', marginBottom: 8 }}>{peerError}</p>}
           <div className="field-group">
-            <label>Room Name (stable URL identifier)</label>
+            <label>Room Name</label>
             <input value={roomName} onChange={e => setRoomName(e.target.value)}
-              placeholder="e.g. lane1, exam-room-2" style={{ width: '100%' }} />
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-              Display URLs stay the same as long as this name doesn't change
-            </span>
+              placeholder="e.g. lane1" style={{ width: '100%' }} />
           </div>
           <div className="field-group">
             <label>Patient ID (optional)</label>
-            <input value={patientId} onChange={e => setPatientId(e.target.value)}
-              placeholder="Leave blank if not needed" style={{ width: '100%' }} />
+            <input value={patientId} onChange={e => setPatientId(e.target.value)} style={{ width: '100%' }} />
           </div>
           <div className="field-group">
             <label>Examiner (optional)</label>
-            <input value={examiner} onChange={e => setExaminer(e.target.value)}
-              placeholder="Your name" style={{ width: '100%' }} />
+            <input value={examiner} onChange={e => setExaminer(e.target.value)} style={{ width: '100%' }} />
           </div>
           <button className="primary" onClick={handleCreateSession}
             disabled={connecting || !roomName.trim()} style={{ marginTop: 8 }}>
@@ -263,425 +278,258 @@ export default function Clinician() {
     );
   }
 
-  // --- Active session ---
+  // ========== ACTIVE SESSION ==========
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-      {/* Left: Controls */}
+      {/* ===== LEFT: Controls ===== */}
       <div style={{
-        width: '380px', minWidth: '380px',
+        width: '360px', minWidth: '360px',
         borderRight: '1px solid var(--border)',
-        overflowY: 'auto', padding: '12px',
+        overflowY: 'auto', padding: '10px',
       }}>
-        <div style={{ marginBottom: 12 }}>
-          <h2 style={{ fontSize: '16px', marginBottom: '2px' }}>FDQ Console</h2>
-          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-            Room: {roomName} | Session: {session.sessionId}
+        {/* Header */}
+        <div style={{ marginBottom: 8 }}>
+          <h2 style={{ fontSize: '15px', margin: 0 }}>FDQ Console</h2>
+          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+            Room: {roomName} | {['clinician','distance','near','controller'].map(r =>
+              <span key={r} style={{ color: session.clients[r] ? 'var(--success)' : 'var(--text-muted)' }}>
+                {r[0].toUpperCase()}
+              </span>
+            )}
           </span>
         </div>
 
-        {/* Phase Stepper */}
-        <div className="panel">
-          <h3>Phase</h3>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-            {PHASES.map((p, i) => (
-              <button key={p.key} onClick={() => handleAdvancePhase(p.key)}
-                style={{
-                  fontSize: '11px', padding: '3px 8px',
-                  background: p.key === currentPhase ? 'var(--accent)' : undefined,
-                  borderColor: p.key === currentPhase ? 'var(--accent)' : undefined,
-                  opacity: i <= phaseIndex ? 1 : 0.5,
-                }}>
-                {p.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Connection Status */}
-        <div className="panel">
-          <h3>Connections</h3>
-          {['clinician', 'distance', 'near', 'controller'].map(role => (
-            <div key={role} style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-              <span className={`status-dot ${session.clients[role] ? 'connected' : 'disconnected'}`} />
-              <span style={{ fontSize: '13px', textTransform: 'capitalize' }}>{role}</span>
-            </div>
+        {/* Phase stepper */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginBottom: 10 }}>
+          {PHASES.map((p, i) => (
+            <button key={p.key} onClick={() => handleAdvancePhase(p.key)}
+              style={{
+                fontSize: '10px', padding: '2px 6px',
+                background: p.key === currentPhase ? 'var(--accent)' : undefined,
+                borderColor: p.key === currentPhase ? 'var(--accent)' : undefined,
+                opacity: i <= phaseIndex ? 1 : 0.4,
+              }}>{p.label}</button>
           ))}
         </div>
 
-        {/* QR / Pairing */}
-        {(currentPhase === 'setup' || currentPhase === 'pairing') && peerId && (
-          <div className="panel">
-            <h3>Pairing</h3>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-              <div>
-                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: 4 }}>
-                  Phone Controller
-                </div>
-                <div style={{ background: '#fff', padding: 8, borderRadius: 6, display: 'inline-block' }}>
-                  <QRCodeSVG value={`${baseUrl}/controller/${peerId}`} size={100} />
-                </div>
-                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: 4, wordBreak: 'break-all', maxWidth: 180 }}>
-                  {baseUrl}/controller/{peerId}
-                </div>
-              </div>
-              <div>
-                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: 4 }}>
-                  Display URLs
-                </div>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: 4, wordBreak: 'break-all' }}>
-                  Distance: {baseUrl}/distance/{peerId}
-                </div>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', wordBreak: 'break-all' }}>
-                  Near: {baseUrl}/near/{peerId}
-                </div>
-              </div>
-            </div>
-            <button className="primary" onClick={() => handleAdvancePhase('pairing')}
-              style={{ marginTop: 8, fontSize: '12px' }}>
-              Begin Pairing
-            </button>
-          </div>
-        )}
+        {/* ===== TRIAL WORKFLOW (main area during alignment) ===== */}
+        {isAlignPhase && (
+          <div className="panel" style={{ borderColor: 'var(--accent)', borderWidth: 2 }}>
+            <h3 style={{ color: 'var(--accent)' }}>
+              {currentPhase === 'distance-align' ? 'Distance' : 'Near'} Trial
+            </h3>
 
-        {/* Configuration */}
-        <div className="panel">
-          <h3>Configuration</h3>
-          <div className="field-row" style={{ marginBottom: 8 }}>
-            <div>
-              <label>Target Preset</label>
-              <select value={session.config.targetPreset}
-                onChange={e => handleUpdateConfig({ targetPreset: e.target.value })}>
-                <option value="ring-cross">Ring &amp; Cross</option>
-                <option value="cross-ring">Cross &amp; Ring</option>
-                <option value="triangle-square">House (Triangle+Square)</option>
-                <option value="vert-horiz">Plus (Vert+Horiz Lines)</option>
-                <option value="paragraph">Alternating Word Paragraph</option>
-              </select>
-            </div>
-            <div>
-              <label>Sensitivity</label>
+            {/* Trial state machine */}
+            {trialState === 'idle' && (
+              <div>
+                <button className="primary" onClick={handleNewTrial}
+                  style={{ width: '100%', padding: '10px', fontSize: '14px' }}>
+                  New Trial (Reset Targets)
+                </button>
+                <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 6 }}>
+                  Instruct patient to close eyes
+                </p>
+              </div>
+            )}
+            {trialState === 'waiting' && (
+              <div>
+                <p style={{ fontSize: '13px', color: 'var(--warning)', marginBottom: 8 }}>
+                  Targets reset. Patient's eyes should be closed.
+                </p>
+                <button className="accent" onClick={handleEyesOpen}
+                  style={{ width: '100%', padding: '10px', fontSize: '14px' }}>
+                  Eyes Open — Start Adjusting
+                </button>
+              </div>
+            )}
+            {trialState === 'adjusting' && (
+              <div>
+                <p style={{ fontSize: '12px', color: 'var(--success)', marginBottom: 4 }}>
+                  Patient adjusting... ({(elapsed / 1000).toFixed(1)}s)
+                </p>
+                <button className="primary" onClick={handleCaptureTrial}
+                  style={{
+                    width: '100%', padding: '14px', fontSize: '16px',
+                    background: '#238636', marginBottom: 8,
+                  }}>
+                  LOCK IN MEASUREMENT
+                </button>
+                <button onClick={handleResetTarget} style={{ fontSize: '11px' }}>
+                  Re-center
+                </button>
+              </div>
+            )}
+
+            {/* Quick actions during alignment */}
+            <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <select value={session.config.movementSensitivity}
-                onChange={e => handleSetSensitivity(e.target.value)}>
+                onChange={e => handleSetSensitivity(e.target.value)}
+                style={{ fontSize: '11px' }}>
                 <option value="fine">Fine</option>
                 <option value="normal">Normal</option>
                 <option value="coarse">Coarse</option>
               </select>
+              <button onClick={handleFlashLock} style={{ fontSize: '11px' }}>Flash Lock</button>
+              <button onClick={() => {
+                const s = sessionRef.current;
+                if (s) hostRef.current?.broadcast({ type: 'state-updated', state: s });
+              }} style={{ fontSize: '11px' }}>Resend</button>
             </div>
-          </div>
-          <div className="field-row" style={{ marginBottom: 8 }}>
-            <div>
-              <label>Distance Target (px)</label>
-              <input type="number" value={session.config.distanceTargetSizePx}
-                onChange={e => handleUpdateConfig({ distanceTargetSizePx: Number(e.target.value) })}
-                style={{ width: '100%' }} />
-            </div>
-            <div>
-              <label>Near Target (px)</label>
-              <input type="number" value={session.config.nearTargetSizePx}
-                onChange={e => handleUpdateConfig({ nearTargetSizePx: Number(e.target.value) })}
-                style={{ width: '100%' }} />
-            </div>
-            <div>
-              <label>Stroke</label>
-              <input type="number" value={session.config.strokeWidth}
-                onChange={e => handleUpdateConfig({ strokeWidth: Number(e.target.value) })}
-                style={{ width: '100%' }} />
-            </div>
-          </div>
-          {session.config.targetPreset === 'paragraph' && (
-            <div className="field-row" style={{ marginBottom: 8 }}>
-              <div>
-                <label>Paragraph Font Dist (px)</label>
-                <input type="number" value={session.config.paragraphFontSizeDistance}
-                  onChange={e => handleUpdateConfig({ paragraphFontSizeDistance: Number(e.target.value) })}
-                  style={{ width: '100%' }} />
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>56 ≈ 20/30 on 55" 4K @ 25ft</span>
-              </div>
-              <div>
-                <label>Paragraph Font Near (px)</label>
-                <input type="number" value={session.config.paragraphFontSizeNear}
-                  onChange={e => handleUpdateConfig({ paragraphFontSizeNear: Number(e.target.value) })}
-                  style={{ width: '100%' }} />
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>15 ≈ 11pt</span>
-              </div>
-            </div>
-          )}
-          <div className="field-row" style={{ marginBottom: 8 }}>
-            <div>
-              <label>Display PPI</label>
-              <input type="number" value={session.config.displayPPI}
-                onChange={e => handleUpdateConfig({ displayPPI: Number(e.target.value) })}
-                style={{ width: '100%' }} />
-            </div>
-            <div>
-              <label>Near PPI</label>
-              <input type="number" value={session.config.nearDisplayPPI}
-                onChange={e => handleUpdateConfig({ nearDisplayPPI: Number(e.target.value) })}
-                style={{ width: '100%' }} />
-            </div>
-          </div>
-          <div className="field-row" style={{ marginBottom: 8 }}>
-            <div>
-              <label>Distance (mm)</label>
-              <input type="number" value={session.config.distanceOpticalDistanceMm}
-                onChange={e => handleUpdateConfig({ distanceOpticalDistanceMm: Number(e.target.value) })}
-                style={{ width: '100%' }} />
-            </div>
-            <div>
-              <label>Near Distance (mm)</label>
-              <input type="number" value={session.config.nearDistanceMm}
-                onChange={e => handleUpdateConfig({ nearDistanceMm: Number(e.target.value) })}
-                style={{ width: '100%' }} />
-            </div>
-          </div>
-          <div style={{ marginBottom: 8 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-              <input type="checkbox" checked={session.config.mirrorDistance}
-                onChange={e => handleUpdateConfig({ mirrorDistance: e.target.checked })} />
-              <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>Mirror distance display</span>
-            </label>
-          </div>
-          <div style={{ marginBottom: 8, padding: '8px', background: 'var(--bg-tertiary)', borderRadius: 6 }}>
-            <label style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 6, display: 'block' }}>
-              Anti-bleed compensation: {session.config.antiBleedLevel}%
-            </label>
-            <input type="range" min="0" max="50" value={session.config.antiBleedLevel}
-              onChange={e => handleUpdateConfig({ antiBleedLevel: Number(e.target.value) })}
-              style={{ width: '100%' }} />
-            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-              Raises background luminance to mask filter bleed-through at near
-            </span>
-            <div className="field-row" style={{ marginTop: 6 }}>
-              <div>
-                <label>Red intensity: {session.config.redIntensity}%</label>
-                <input type="range" min="10" max="100" value={session.config.redIntensity}
-                  onChange={e => handleUpdateConfig({ redIntensity: Number(e.target.value) })}
-                  style={{ width: '100%' }} />
-              </div>
-              <div>
-                <label>Green intensity: {session.config.greenIntensity}%</label>
-                <input type="range" min="10" max="100" value={session.config.greenIntensity}
-                  onChange={e => handleUpdateConfig({ greenIntensity: Number(e.target.value) })}
-                  style={{ width: '100%' }} />
-              </div>
-            </div>
-          </div>
-          <div className="field-row">
-            <div>
-              <label>Right Eye Sees</label>
-              <select value={session.config.rightEyeSees}
-                onChange={e => handleUpdateConfig({
-                  rightEyeSees: e.target.value,
-                  leftEyeSees: e.target.value === 'green' ? 'red' : 'green',
-                })}>
-                <option value="green">Green</option>
-                <option value="red">Red</option>
-              </select>
-            </div>
-            <div>
-              <label>Movable Target</label>
-              <select value={session.targets.movableIsRed ? 'red' : 'green'}
-                onChange={e => {
-                  const isRed = e.target.value === 'red';
-                  updateSession(prev => ({
-                    ...prev,
-                    targets: { ...prev.targets, movableIsRed: isRed },
-                  }));
-                }}>
-                <option value="red">Red (Ring)</option>
-                <option value="green">Green (Cross)</option>
-              </select>
-            </div>
-          </div>
-        </div>
 
-        {/* Fixation Lock */}
-        <div className="panel">
-          <h3>Fixation Lock</h3>
-          <div className="btn-row" style={{ marginBottom: 8 }}>
+            {/* Advance */}
+            <div style={{ marginTop: 10 }}>
+              {currentPhase === 'distance-align' && (
+                <button className="accent" onClick={() => handleAdvancePhase('transition')}
+                  style={{ fontSize: '12px' }}>Advance to Near →</button>
+              )}
+              {currentPhase === 'near-align' && (
+                <button className="accent" onClick={() => handleAdvancePhase('results')}
+                  style={{ fontSize: '12px' }}>Finish → Results</button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Fixation Lock (compact) */}
+        <div className="panel" style={{ padding: '10px' }}>
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginRight: 4 }}>Lock:</span>
             {LOCK_MODES.map(mode => (
               <button key={mode} onClick={() => handleSetLockMode(mode)}
                 style={{
-                  fontSize: '12px', textTransform: 'capitalize',
+                  fontSize: '10px', padding: '2px 6px', textTransform: 'capitalize',
                   background: session.config.fixationLockMode === mode ? 'var(--accent)' : undefined,
                   borderColor: session.config.fixationLockMode === mode ? 'var(--accent)' : undefined,
-                }}>
-                {mode}
-              </button>
+                }}>{mode}</button>
             ))}
-          </div>
-          <button onClick={handleFlashLock} style={{ fontSize: '12px' }}>Flash Now</button>
-          <div style={{ marginTop: 8 }}>
-            <label>Lock Size (px)</label>
-            <input type="number" value={session.config.fixationLockSizePx}
-              onChange={e => handleUpdateConfig({ fixationLockSizePx: Number(e.target.value) })}
-              style={{ width: 80 }} />
+            <button onClick={handleFlashLock} style={{ fontSize: '10px', padding: '2px 6px' }}>Flash</button>
           </div>
         </div>
 
-        {/* Suppression Check */}
+        {/* Pairing (collapsible) */}
+        <div className="panel" style={{ padding: '10px' }}>
+          <div onClick={() => setShowPairing(!showPairing)}
+            style={{ cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}>
+            {showPairing ? '▾' : '▸'} Pairing & Connections
+          </div>
+          {showPairing && peerId && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+                {['clinician','distance','near','controller'].map(role => (
+                  <span key={role} style={{ fontSize: '11px' }}>
+                    <span className={`status-dot ${session.clients[role] ? 'connected' : 'disconnected'}`} />
+                    {role}
+                  </span>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <div style={{ background: '#fff', padding: 6, borderRadius: 4, display: 'inline-block' }}>
+                  <QRCodeSVG value={`${baseUrl}/controller/${peerId}`} size={80} />
+                </div>
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                  <div>Controller: .../controller/{peerId}</div>
+                  <div>Distance: .../distance/{peerId}</div>
+                  <div>Near: .../near/{peerId}</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Suppression check panel */}
         {currentPhase === 'suppression' && (
           <div className="panel">
             <h3>Suppression Check</h3>
             <div className="btn-row" style={{ marginBottom: 8 }}>
               <button onClick={() => setSuppressionStep('red')}
-                className={suppressionStep === 'red' ? 'accent' : ''}>Show Red Only</button>
+                className={suppressionStep === 'red' ? 'accent' : ''}>Red Only</button>
               <button onClick={() => setSuppressionStep('green')}
-                className={suppressionStep === 'green' ? 'accent' : ''}>Show Green Only</button>
+                className={suppressionStep === 'green' ? 'accent' : ''}>Green Only</button>
               <button onClick={() => setSuppressionStep('both')}
-                className={suppressionStep === 'both' ? 'accent' : ''}>Show Both</button>
+                className={suppressionStep === 'both' ? 'accent' : ''}>Both</button>
             </div>
-            <div style={{ marginTop: 8, fontSize: '12px' }}>
-              <div style={{ marginBottom: 6 }}>Patient Response:</div>
-              <div className="btn-row">
-                <button className="primary" onClick={() => handleRecordSuppression({
-                  redSeen: true, greenSeen: true, bothSeen: true, result: 'pass',
-                })}>Both Seen — Pass</button>
-                <button className="danger" onClick={() => handleRecordSuppression({
-                  redSeen: suppressionStep !== 'green',
-                  greenSeen: suppressionStep !== 'red',
-                  bothSeen: false, result: 'fail',
-                })}>Suppression — Fail</button>
-                <button onClick={() => handleRecordSuppression({
-                  redSeen: null, greenSeen: null, bothSeen: null, result: 'uncertain',
-                })}>Uncertain</button>
-              </div>
+            <div className="btn-row">
+              <button className="primary" onClick={() => handleRecordSuppression({
+                redSeen: true, greenSeen: true, bothSeen: true, result: 'pass',
+              })}>Pass</button>
+              <button className="danger" onClick={() => handleRecordSuppression({
+                redSeen: false, greenSeen: false, bothSeen: false, result: 'fail',
+              })}>Fail</button>
+              <button onClick={() => handleRecordSuppression({
+                redSeen: null, greenSeen: null, bothSeen: null, result: 'uncertain',
+              })}>Uncertain</button>
             </div>
           </div>
         )}
 
-        {/* Color Calibration */}
+        {/* Color calibration panel */}
         {(currentPhase === 'color-cal-distance' || currentPhase === 'color-cal-near') && (
           <div className="panel">
             <h3>Color Calibration — {currentPhase === 'color-cal-distance' ? 'Distance' : 'Near'}</h3>
-            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 8 }}>
-              Verify red/green dissociation. Show each target and confirm the correct eye cannot see it through its matching lens.
-            </p>
-            <div className="btn-row" style={{ marginBottom: 10 }}>
-              <button
-                className={session.colorCalibration?.step === 'red' ? 'accent' : ''}
+            <div className="btn-row" style={{ marginBottom: 8 }}>
+              <button className={session.colorCalibration?.step === 'red' ? 'accent' : ''}
                 onClick={() => updateSession(prev => ({
-                  ...prev,
-                  colorCalibration: { ...prev.colorCalibration, step: 'red' },
-                }))}>
-                Show RED Only
-              </button>
-              <button
-                className={session.colorCalibration?.step === 'green' ? 'accent' : ''}
+                  ...prev, colorCalibration: { ...prev.colorCalibration, step: 'red' },
+                }))}>RED Only</button>
+              <button className={session.colorCalibration?.step === 'green' ? 'accent' : ''}
                 onClick={() => updateSession(prev => ({
-                  ...prev,
-                  colorCalibration: { ...prev.colorCalibration, step: 'green' },
-                }))}>
-                Show GREEN Only
-              </button>
+                  ...prev, colorCalibration: { ...prev.colorCalibration, step: 'green' },
+                }))}>GREEN Only</button>
             </div>
-            <div style={{ fontSize: '12px', marginBottom: 10, padding: '8px', background: 'var(--bg-tertiary)', borderRadius: 6 }}>
-              {session.colorCalibration?.step === 'red' ? (
-                <>
-                  <div style={{ color: '#ff6666', marginBottom: 4 }}>RED target displayed</div>
-                  <div>Patient through <b>RED lens</b>: should <b>NOT</b> see target</div>
-                  <div>Patient through <b>GREEN lens</b>: should see target</div>
-                </>
-              ) : (
-                <>
-                  <div style={{ color: '#66ff66', marginBottom: 4 }}>GREEN target displayed</div>
-                  <div>Patient through <b>GREEN lens</b>: should <b>NOT</b> see target</div>
-                  <div>Patient through <b>RED lens</b>: should see target</div>
-                </>
-              )}
+            <div style={{ fontSize: '11px', padding: 6, background: 'var(--bg-tertiary)', borderRadius: 4, marginBottom: 8 }}>
+              {session.colorCalibration?.step === 'red'
+                ? 'RED shown — should be INVISIBLE through red lens'
+                : 'GREEN shown — should be INVISIBLE through green lens'}
             </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 6 }}>
-              Adjust colors if target bleeds through wrong lens:
-            </div>
-            <div className="field-row" style={{ marginBottom: 8 }}>
+            <div className="field-row" style={{ marginBottom: 6 }}>
               <div>
-                <label>Red Color</label>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <input type="color" value={session.config.redColor}
-                    onChange={e => handleUpdateConfig({ redColor: e.target.value })}
-                    style={{ width: 36, height: 30, padding: 2 }} />
-                  <input value={session.config.redColor}
-                    onChange={e => handleUpdateConfig({ redColor: e.target.value })}
-                    style={{ width: 80 }} />
-                </div>
+                <label>Red</label>
+                <input type="color" value={session.config.redColor}
+                  onChange={e => handleUpdateConfig({ redColor: e.target.value })}
+                  style={{ width: 50, height: 28 }} />
               </div>
               <div>
-                <label>Green Color</label>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <input type="color" value={session.config.greenColor}
-                    onChange={e => handleUpdateConfig({ greenColor: e.target.value })}
-                    style={{ width: 36, height: 30, padding: 2 }} />
-                  <input value={session.config.greenColor}
-                    onChange={e => handleUpdateConfig({ greenColor: e.target.value })}
-                    style={{ width: 80 }} />
-                </div>
+                <label>Green</label>
+                <input type="color" value={session.config.greenColor}
+                  onChange={e => handleUpdateConfig({ greenColor: e.target.value })}
+                  style={{ width: 50, height: 28 }} />
               </div>
             </div>
             <div className="btn-row">
               <button className="primary" onClick={() => {
                 const key = currentPhase === 'color-cal-distance' ? 'distanceCompleted' : 'nearCompleted';
                 updateSession(prev => ({
-                  ...prev,
-                  colorCalibration: { ...prev.colorCalibration, [key]: true },
+                  ...prev, colorCalibration: { ...prev.colorCalibration, [key]: true },
                 }));
-              }}>
-                Dissociation Confirmed
-              </button>
+              }}>Confirmed</button>
               <button className="danger" onClick={() => {
                 const key = currentPhase === 'color-cal-distance' ? 'distanceCompleted' : 'nearCompleted';
                 updateSession(prev => ({
-                  ...prev,
-                  colorCalibration: { ...prev.colorCalibration, [key]: false },
+                  ...prev, colorCalibration: { ...prev.colorCalibration, [key]: false },
                 }));
-              }}>
-                Bleed-through Detected
-              </button>
-            </div>
-            <div style={{ marginTop: 6, fontSize: '11px', color: 'var(--text-muted)' }}>
-              Distance: {session.colorCalibration?.distanceCompleted ? 'Confirmed' : 'Pending'} |{' '}
-              Near: {session.colorCalibration?.nearCompleted ? 'Confirmed' : 'Pending'}
+              }}>Bleed-through</button>
             </div>
           </div>
         )}
 
-        {/* Calibration */}
+        {/* Calibration (collapsible) */}
         {currentPhase?.startsWith('calibration') && (
-          <div className="panel">
-            <h3>Calibration</h3>
-            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 8 }}>
-              Use the display targets to confirm alignment. Patient adjusts until centered.
-            </p>
-            <div className="btn-row">
-              <button className="primary" onClick={() => handleCompleteCalibration('distance')}>
-                Complete Distance Cal</button>
-              <button className="primary" onClick={() => handleCompleteCalibration('near')}>
-                Complete Near Cal</button>
-              <button onClick={() => handleCompleteCalibration('handoff')}>
-                Complete Handoff Cal</button>
+          <div className="panel" style={{ padding: '10px' }}>
+            <div onClick={() => setShowCalibration(!showCalibration)}
+              style={{ cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}>
+              {showCalibration ? '▾' : '▸'} Calibration
             </div>
-            <div style={{ marginTop: 8, fontSize: '11px', color: 'var(--text-muted)' }}>
-              Distance: {session.calibration.distance.completed ? 'Done' : 'Pending'} |{' '}
-              Near: {session.calibration.near.completed ? 'Done' : 'Pending'} |{' '}
-              Handoff: {session.calibration.handoff.completed ? 'Done' : 'Pending'}
-            </div>
-          </div>
-        )}
-
-        {/* Alignment Controls */}
-        {(currentPhase === 'distance-align' || currentPhase === 'near-align') && (
-          <div className="panel">
-            <h3>{currentPhase === 'distance-align' ? 'Distance' : 'Near'} Alignment</h3>
-            <div className="btn-row" style={{ marginBottom: 8 }}>
-              <button className="primary" onClick={handleCaptureTrial}>Capture Trial</button>
-              <button onClick={handleResetTarget}>Re-center Target</button>
-            </div>
-            {currentPhase === 'distance-align' && (
-              <button className="accent" onClick={() => handleAdvancePhase('transition')}>
-                Advance to Near →</button>
-            )}
-            {currentPhase === 'near-align' && (
-              <button className="accent" onClick={() => handleAdvancePhase('results')}>
-                Finish → Results</button>
+            {showCalibration && (
+              <div style={{ marginTop: 8 }}>
+                <div className="btn-row">
+                  <button className="primary" onClick={() => handleCompleteCalibration('distance')}>Dist Cal Done</button>
+                  <button className="primary" onClick={() => handleCompleteCalibration('near')}>Near Cal Done</button>
+                </div>
+                <div style={{ marginTop: 6, fontSize: '10px', color: 'var(--text-muted)' }}>
+                  Dist: {session.calibration.distance.completed ? '✓' : '—'} |
+                  Near: {session.calibration.near.completed ? '✓' : '—'}
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -689,90 +537,218 @@ export default function Clinician() {
         {/* Transition */}
         {currentPhase === 'transition' && (
           <div className="panel">
-            <h3>Distance → Near Transition</h3>
-            <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-              Animation in progress. Wait for targets to settle on near display.
-            </p>
-            <button className="primary" onClick={() => handleAdvancePhase('near-align')}
-              style={{ marginTop: 8 }}>Begin Near Alignment</button>
+            <h3>Transition</h3>
+            <button className="primary" onClick={() => handleAdvancePhase('near-align')}>
+              Begin Near Alignment</button>
           </div>
         )}
 
-        {/* Quick Actions */}
-        <div className="panel">
-          <h3>Quick Actions</h3>
-          <div className="btn-row">
-            <button onClick={handleResetTarget}>Re-center</button>
-            <button onClick={handleFlashLock}>Flash Lock</button>
-            <button onClick={() => {
-              const s = sessionRef.current;
-              if (s) hostRef.current?.broadcast({ type: 'state-updated', state: s });
-            }}>Resend State</button>
-            <button className="danger" onClick={() => {
-              sessionRef.current = null;
-              setSession(null);
-            }}>End Session</button>
+        {/* Configuration (collapsible) */}
+        <div className="panel" style={{ padding: '10px' }}>
+          <div onClick={() => setShowConfig(!showConfig)}
+            style={{ cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}>
+            {showConfig ? '▾' : '▸'} Configuration
           </div>
+          {showConfig && (
+            <div style={{ marginTop: 8 }}>
+              <div className="field-row" style={{ marginBottom: 6 }}>
+                <div>
+                  <label>Target Preset</label>
+                  <select value={session.config.targetPreset}
+                    onChange={e => handleUpdateConfig({ targetPreset: e.target.value })}>
+                    <option value="ring-cross">Ring & Cross</option>
+                    <option value="cross-ring">Cross & Ring</option>
+                    <option value="triangle-square">House</option>
+                    <option value="vert-horiz">Plus Lines</option>
+                    <option value="paragraph">Paragraph</option>
+                  </select>
+                </div>
+                <div>
+                  <label>Sensitivity</label>
+                  <select value={session.config.movementSensitivity}
+                    onChange={e => handleSetSensitivity(e.target.value)}>
+                    <option value="fine">Fine</option>
+                    <option value="normal">Normal</option>
+                    <option value="coarse">Coarse</option>
+                  </select>
+                </div>
+              </div>
+              <div className="field-row" style={{ marginBottom: 6 }}>
+                <div>
+                  <label>Dist Target (px)</label>
+                  <input type="number" value={session.config.distanceTargetSizePx}
+                    onChange={e => handleUpdateConfig({ distanceTargetSizePx: Number(e.target.value) })}
+                    style={{ width: '100%' }} />
+                </div>
+                <div>
+                  <label>Near Target (px)</label>
+                  <input type="number" value={session.config.nearTargetSizePx}
+                    onChange={e => handleUpdateConfig({ nearTargetSizePx: Number(e.target.value) })}
+                    style={{ width: '100%' }} />
+                </div>
+                <div>
+                  <label>Stroke</label>
+                  <input type="number" value={session.config.strokeWidth}
+                    onChange={e => handleUpdateConfig({ strokeWidth: Number(e.target.value) })}
+                    style={{ width: '100%' }} />
+                </div>
+              </div>
+              {session.config.targetPreset === 'paragraph' && (
+                <div className="field-row" style={{ marginBottom: 6 }}>
+                  <div>
+                    <label>Para Font Dist (px)</label>
+                    <input type="number" value={session.config.paragraphFontSizeDistance}
+                      onChange={e => handleUpdateConfig({ paragraphFontSizeDistance: Number(e.target.value) })}
+                      style={{ width: '100%' }} />
+                  </div>
+                  <div>
+                    <label>Para Font Near (px)</label>
+                    <input type="number" value={session.config.paragraphFontSizeNear}
+                      onChange={e => handleUpdateConfig({ paragraphFontSizeNear: Number(e.target.value) })}
+                      style={{ width: '100%' }} />
+                  </div>
+                </div>
+              )}
+              <div className="field-row" style={{ marginBottom: 6 }}>
+                <div>
+                  <label>Dist PPI</label>
+                  <input type="number" value={session.config.displayPPI}
+                    onChange={e => handleUpdateConfig({ displayPPI: Number(e.target.value) })}
+                    style={{ width: '100%' }} />
+                </div>
+                <div>
+                  <label>Near PPI</label>
+                  <input type="number" value={session.config.nearDisplayPPI}
+                    onChange={e => handleUpdateConfig({ nearDisplayPPI: Number(e.target.value) })}
+                    style={{ width: '100%' }} />
+                </div>
+              </div>
+              <div className="field-row" style={{ marginBottom: 6 }}>
+                <div>
+                  <label>Dist (mm)</label>
+                  <input type="number" value={session.config.distanceOpticalDistanceMm}
+                    onChange={e => handleUpdateConfig({ distanceOpticalDistanceMm: Number(e.target.value) })}
+                    style={{ width: '100%' }} />
+                </div>
+                <div>
+                  <label>Near (mm)</label>
+                  <input type="number" value={session.config.nearDistanceMm}
+                    onChange={e => handleUpdateConfig({ nearDistanceMm: Number(e.target.value) })}
+                    style={{ width: '100%' }} />
+                </div>
+              </div>
+              <div style={{ marginBottom: 6 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={session.config.mirrorDistance}
+                    onChange={e => handleUpdateConfig({ mirrorDistance: e.target.checked })} />
+                  <span style={{ fontSize: '12px' }}>Mirror distance display</span>
+                </label>
+              </div>
+              <div style={{ marginBottom: 6 }}>
+                <label>Anti-bleed: {session.config.antiBleedLevel}%</label>
+                <input type="range" min="0" max="50" value={session.config.antiBleedLevel}
+                  onChange={e => handleUpdateConfig({ antiBleedLevel: Number(e.target.value) })}
+                  style={{ width: '100%' }} />
+              </div>
+              <div className="field-row">
+                <div>
+                  <label>Red int: {session.config.redIntensity}%</label>
+                  <input type="range" min="10" max="100" value={session.config.redIntensity}
+                    onChange={e => handleUpdateConfig({ redIntensity: Number(e.target.value) })}
+                    style={{ width: '100%' }} />
+                </div>
+                <div>
+                  <label>Green int: {session.config.greenIntensity}%</label>
+                  <input type="range" min="10" max="100" value={session.config.greenIntensity}
+                    onChange={e => handleUpdateConfig({ greenIntensity: Number(e.target.value) })}
+                    style={{ width: '100%' }} />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Quick Actions */}
+        <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+          <button onClick={handleResetTarget} style={{ fontSize: '11px' }}>Re-center</button>
+          <button onClick={() => {
+            const s = sessionRef.current;
+            if (s) hostRef.current?.broadcast({ type: 'state-updated', state: s });
+          }} style={{ fontSize: '11px' }}>Resend</button>
+          <button className="danger" onClick={() => {
+            sessionRef.current = null;
+            setSession(null);
+          }} style={{ fontSize: '11px' }}>End</button>
         </div>
       </div>
 
-      {/* Right: Telemetry & Results */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '12px' }}>
-        {/* Live Telemetry */}
-        <div className="panel">
-          <h3>Live Telemetry</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', fontSize: '13px' }}>
-            <div><span style={{ color: 'var(--text-secondary)' }}>Phase: </span>
-              {PHASES.find(p => p.key === currentPhase)?.label || currentPhase}</div>
-            <div><span style={{ color: 'var(--text-secondary)' }}>Sensitivity: </span>
-              {session.config.movementSensitivity}</div>
-            <div><span style={{ color: 'var(--text-secondary)' }}>Lock: </span>
-              {session.config.fixationLockMode}</div>
-            <div><span style={{ color: 'var(--text-secondary)' }}>Target X: </span>
-              <span style={{ fontFamily: 'monospace', color: 'var(--accent)' }}>
-                {session.targets.movableX.toFixed(1)} px</span></div>
-            <div><span style={{ color: 'var(--text-secondary)' }}>Target Y: </span>
-              <span style={{ fontFamily: 'monospace', color: 'var(--accent)' }}>
-                {session.targets.movableY.toFixed(1)} px</span></div>
-            <div><span style={{ color: 'var(--text-secondary)' }}>Size: </span>
-              D:{session.config.distanceTargetSizePx} / N:{session.config.nearTargetSizePx} px</div>
+      {/* ===== RIGHT: Live Data & Results ===== */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '10px' }}>
+        {/* === LIVE PRISM READOUT === */}
+        <div className="panel" style={{ borderColor: 'var(--accent)', borderWidth: 2 }}>
+          <h3 style={{ color: 'var(--accent)', marginBottom: 8 }}>Live Position</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Horizontal</div>
+              <div style={{
+                fontSize: '32px', fontWeight: 'bold', fontFamily: 'monospace',
+                color: livePrism ? (Math.abs(livePrism.horizontalPrism) < 0.1 ? 'var(--success)' : 'var(--text-primary)') : 'var(--text-muted)',
+              }}>
+                {livePrism ? livePrism.horizontalPrism.toFixed(2) : '—'}
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>prism diopters</div>
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                {livePrism ? `${livePrism.xPx.toFixed(1)} px / ${livePrism.xArcMin.toFixed(1)} arcmin` : ''}
+              </div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Vertical</div>
+              <div style={{
+                fontSize: '32px', fontWeight: 'bold', fontFamily: 'monospace',
+                color: livePrism ? (Math.abs(livePrism.verticalPrism) < 0.1 ? 'var(--success)' : 'var(--text-primary)') : 'var(--text-muted)',
+              }}>
+                {livePrism ? livePrism.verticalPrism.toFixed(2) : '—'}
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>prism diopters</div>
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                {livePrism ? `${livePrism.yPx.toFixed(1)} px / ${livePrism.yArcMin.toFixed(1)} arcmin` : ''}
+              </div>
+            </div>
           </div>
+          {livePrism && (
+            <div style={{ textAlign: 'center', marginTop: 8, fontSize: '12px', color: 'var(--text-secondary)' }}>
+              Vector: {livePrism.vectorPrism.toFixed(2)} pd
+            </div>
+          )}
         </div>
 
-        {/* Mini Preview */}
-        <div className="panel">
-          <h3>Target Preview</h3>
+        {/* Preview */}
+        <div className="panel" style={{ padding: '10px' }}>
           <ClinicianPreview session={session} />
         </div>
 
-        {/* Suppression Result */}
+        {/* Suppression result */}
         {session.suppressionCheck.completed && (
-          <div className="panel">
-            <h3>Suppression Check Result</h3>
-            <div style={{ fontSize: '13px' }}>
-              <span style={{
-                color: session.suppressionCheck.result === 'pass' ? 'var(--success)' :
-                       session.suppressionCheck.result === 'fail' ? 'var(--danger)' : 'var(--warning)',
-                fontWeight: 'bold',
-              }}>{session.suppressionCheck.result?.toUpperCase()}</span>
-              <span style={{ color: 'var(--text-secondary)', marginLeft: 8 }}>
-                Red: {session.suppressionCheck.redSeen ? 'Yes' : 'No'} |{' '}
-                Green: {session.suppressionCheck.greenSeen ? 'Yes' : 'No'} |{' '}
-                Both: {session.suppressionCheck.bothSeen ? 'Yes' : 'No'}
-              </span>
-            </div>
+          <div style={{
+            padding: '6px 10px', borderRadius: 6, marginBottom: 10, fontSize: '12px',
+            background: session.suppressionCheck.result === 'pass' ? '#0d1f0d' :
+                        session.suppressionCheck.result === 'fail' ? '#1f0d0d' : '#1f1a0d',
+            border: `1px solid ${session.suppressionCheck.result === 'pass' ? 'var(--success)' :
+                     session.suppressionCheck.result === 'fail' ? 'var(--danger)' : 'var(--warning)'}`,
+          }}>
+            Suppression: <b>{session.suppressionCheck.result?.toUpperCase()}</b>
           </div>
         )}
 
-        {/* Trials Table */}
+        {/* === TRIAL TABLE === */}
         {session.trials.length > 0 && (
           <div className="panel">
-            <h3>Captured Trials</h3>
+            <h3>Locked-In Trials</h3>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                    {['#','Phase','X (px)','Y (px)','X (mm)','Y (mm)','X (arcmin)','Y (arcmin)','H Prism','V Prism','Vector'].map(h => (
+                    {['#','Phase','H (pd)','V (pd)','Vector','X (px)','Y (px)','Time (s)'].map(h => (
                       <th key={h} style={thStyle}>{h}</th>
                     ))}
                   </tr>
@@ -782,15 +758,12 @@ export default function Clinician() {
                     <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
                       <td style={tdStyle}>{t.trialNumber}</td>
                       <td style={tdStyle}>{t.phase}</td>
+                      <td style={{ ...tdStyle, fontWeight: 'bold' }}>{t.horizontalPrism.toFixed(2)}</td>
+                      <td style={{ ...tdStyle, fontWeight: 'bold' }}>{t.verticalPrism.toFixed(2)}</td>
+                      <td style={tdStyle}>{t.vectorPrism.toFixed(2)}</td>
                       <td style={tdStyle}>{t.xPx}</td>
                       <td style={tdStyle}>{t.yPx}</td>
-                      <td style={tdStyle}>{t.xMm}</td>
-                      <td style={tdStyle}>{t.yMm}</td>
-                      <td style={tdStyle}>{t.xArcMin}</td>
-                      <td style={tdStyle}>{t.yArcMin}</td>
-                      <td style={tdStyle}>{t.horizontalPrism}</td>
-                      <td style={tdStyle}>{t.verticalPrism}</td>
-                      <td style={tdStyle}>{t.vectorPrism}</td>
+                      <td style={tdStyle}>{t.timeToAlignMs ? (t.timeToAlignMs / 1000).toFixed(1) : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -802,8 +775,8 @@ export default function Clinician() {
         {/* Statistics */}
         {(distStats || nearStats) && (
           <div className="panel">
-            <h3>Trial Statistics</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <h3>Statistics</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               {distStats && <StatsBlock title="Distance" stats={distStats} />}
               {nearStats && <StatsBlock title="Near" stats={nearStats} />}
             </div>
@@ -814,17 +787,17 @@ export default function Clinician() {
         {(currentPhase === 'results' || session.trials.length > 0) && (
           <div className="panel">
             <h3>EMR Summary</h3>
-            <button onClick={handleGenerateSummary} style={{ marginBottom: 8, fontSize: '12px' }}>
-              Generate Summary</button>
+            <button onClick={handleGenerateSummary} style={{ marginBottom: 6, fontSize: '11px' }}>
+              Generate</button>
             <textarea value={summaryText} onChange={e => setSummaryText(e.target.value)}
-              rows={8} style={{ width: '100%', fontFamily: 'monospace', fontSize: '12px', resize: 'vertical' }}
-              placeholder="Click 'Generate Summary' or type your own..." />
-            <div className="btn-row" style={{ marginTop: 8 }}>
-              <button className="primary" onClick={handleCopyToClipboard}>
+              rows={6} style={{ width: '100%', fontFamily: 'monospace', fontSize: '11px', resize: 'vertical' }}
+              placeholder="Click Generate or type..." />
+            <div style={{ marginTop: 6 }}>
+              <button className="primary" onClick={handleCopyToClipboard} style={{ fontSize: '12px' }}>
                 {copySuccess ? 'Copied!' : 'Copy to Clipboard'}</button>
             </div>
-            <p style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: 6 }}>
-              Prism values are estimates derived from subjective alignment displacement, not objective ocular motor recording.
+            <p style={{ fontSize: '9px', color: 'var(--text-muted)', marginTop: 4 }}>
+              Prism values are estimates from subjective alignment, not objective recording.
             </p>
           </div>
         )}
@@ -840,15 +813,14 @@ function ClinicianPreview({ session }) {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !session) return;
-
     const draw = () => {
       const ctx = canvas.getContext('2d');
-      const w = canvas.width;
-      const h = canvas.height;
+      const w = canvas.width, h = canvas.height;
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, w, h);
       renderTargets(ctx, session, w / 2, h / 2, {
-        showFixation: true, showRed: true, showGreen: true, scale: 0.5,
+        showFixation: true, showRed: true, showGreen: true, scale: 0.4,
+        canvasHeight: h, canvasWidth: w,
       });
       animRef.current = requestAnimationFrame(draw);
     };
@@ -856,33 +828,24 @@ function ClinicianPreview({ session }) {
     return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
   }, [session]);
 
-  return (
-    <canvas ref={canvasRef} width={320} height={200}
-      style={{ borderRadius: 6, border: '1px solid var(--border)', display: 'block' }} />
-  );
+  return <canvas ref={canvasRef} width={300} height={180}
+    style={{ borderRadius: 4, border: '1px solid var(--border)', display: 'block', width: '100%' }} />;
 }
 
 function StatsBlock({ title, stats }) {
   return (
-    <div>
-      <div style={{ fontWeight: 'bold', fontSize: '13px', marginBottom: 6 }}>{title}</div>
-      <div style={{ fontSize: '12px', fontFamily: 'monospace', lineHeight: 1.8 }}>
-        <div>Trials: {stats.count}</div>
-        <div>Mean X: {stats.meanX_px} px / {stats.meanX_mm} mm / {stats.meanX_arcmin} arcmin</div>
-        <div>Mean Y: {stats.meanY_px} px / {stats.meanY_mm} mm / {stats.meanY_arcmin} arcmin</div>
-        <div>Median X: {stats.medianX_px} px | Median Y: {stats.medianY_px} px</div>
-        <div>SD X: {stats.stdX_px} px | SD Y: {stats.stdY_px} px</div>
-        <div>Range X: {stats.rangeX_px} px | Range Y: {stats.rangeY_px} px</div>
-        <div>H Prism: {stats.meanH_prism} pd | V Prism: {stats.meanV_prism} pd</div>
-        <div>Radial Repeatability: {stats.radialRepeatability} mm</div>
-        <div style={{
-          color: stats.variabilityNote === 'Good repeatability' ? 'var(--success)' :
-                 stats.variabilityNote === 'High variability' ? 'var(--danger)' : 'var(--warning)',
-        }}>{stats.variabilityNote}</div>
-      </div>
+    <div style={{ fontSize: '11px', fontFamily: 'monospace', lineHeight: 1.7 }}>
+      <div style={{ fontWeight: 'bold', fontSize: '12px', marginBottom: 4 }}>{title} ({stats.count} trials)</div>
+      <div>H prism: {stats.meanH_prism} pd (SD {stats.stdX_px} px)</div>
+      <div>V prism: {stats.meanV_prism} pd (SD {stats.stdY_px} px)</div>
+      <div>Mean: {stats.meanX_arcmin}' × {stats.meanY_arcmin}' arcmin</div>
+      <div style={{
+        color: stats.variabilityNote === 'Good repeatability' ? 'var(--success)' :
+               stats.variabilityNote === 'High variability' ? 'var(--danger)' : 'var(--warning)',
+      }}>{stats.variabilityNote}</div>
     </div>
   );
 }
 
-const thStyle = { textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' };
-const tdStyle = { padding: '5px 8px', fontFamily: 'monospace', whiteSpace: 'nowrap' };
+const thStyle = { textAlign: 'left', padding: '4px 6px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap', fontSize: '11px' };
+const tdStyle = { padding: '4px 6px', fontFamily: 'monospace', whiteSpace: 'nowrap' };
