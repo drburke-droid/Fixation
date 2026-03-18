@@ -10,8 +10,10 @@ export default function DistanceDisplay() {
   const [transitionProgress, setTransitionProgress] = useState(null);
   const [status, setStatus] = useState('Connecting...');
   const [connected, setConnected] = useState(false);
+  const [saccadeLockX, setSaccadeLockX] = useState(null);
   const clientRef = useRef(null);
   const mountedRef = useRef(true);
+  const saccadeTimerRef = useRef(null);
 
   const runTransitionAnimation = useCallback(() => {
     const duration = 1200;
@@ -19,17 +21,41 @@ export default function DistanceDisplay() {
     const animate = (now) => {
       const elapsed = now - start;
       const progress = Math.min(elapsed / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setTransitionProgress(eased);
+      setTransitionProgress(1 - Math.pow(1 - progress, 3));
       if (progress < 1) requestAnimationFrame(animate);
       else setTransitionProgress(null);
     };
     requestAnimationFrame(animate);
   }, []);
 
+  const runSaccadeAnimation = useCallback((config) => {
+    const { jumps, amplitude, pauseMs } = config;
+    const maxAmp = Math.min(amplitude, window.innerWidth * 0.35);
+    let step = 0;
+    setSaccadeLockX(0);
+
+    // Clear any existing timer
+    if (saccadeTimerRef.current) clearInterval(saccadeTimerRef.current);
+
+    // Brief initial pause showing lock at center
+    setTimeout(() => {
+      saccadeTimerRef.current = setInterval(() => {
+        step++;
+        if (step > jumps) {
+          clearInterval(saccadeTimerRef.current);
+          saccadeTimerRef.current = null;
+          setSaccadeLockX(null); // End saccade, show targets
+          return;
+        }
+        // Alternate left/right
+        const dir = step % 2 === 1 ? 1 : -1;
+        setSaccadeLockX(dir * maxAmp);
+      }, pauseMs);
+    }, 300);
+  }, []);
+
   useEffect(() => {
     mountedRef.current = true;
-
     const promise = connectToHost(hostPeerId, 'distance',
       (msg) => {
         if (!mountedRef.current) return;
@@ -47,36 +73,37 @@ export default function DistanceDisplay() {
             setFlashActive(true);
             setTimeout(() => setFlashActive(false), 500);
             break;
+          case 'saccade-start':
+            runSaccadeAnimation(msg.config);
+            break;
+          case 'saccade-stop':
+            if (saccadeTimerRef.current) clearInterval(saccadeTimerRef.current);
+            setSaccadeLockX(null);
+            break;
         }
       },
-      () => {
+      () => { if (mountedRef.current) setConnected(false); },
+      (s) => {
         if (!mountedRef.current) return;
-        setConnected(false);
-      },
-      (statusMsg) => {
-        if (!mountedRef.current) return;
-        setStatus(statusMsg);
-        if (statusMsg === 'Connected!') setConnected(true);
-        else if (statusMsg.includes('retrying') || statusMsg.includes('Disconnected')) setConnected(false);
+        setStatus(s);
+        if (s === 'Connected!') setConnected(true);
+        else if (s.includes('retrying') || s.includes('Disconnected')) setConnected(false);
       },
     );
-
     promise.then(client => {
       if (!mountedRef.current) { client.destroy(); return; }
       clientRef.current = client;
       setConnected(true);
     });
-
     return () => {
       mountedRef.current = false;
+      if (saccadeTimerRef.current) clearInterval(saccadeTimerRef.current);
       clientRef.current?.destroy();
       promise._ctrl?.destroy();
     };
-  }, [hostPeerId, runTransitionAnimation]);
+  }, [hostPeerId, runTransitionAnimation, runSaccadeAnimation]);
 
-  const handleClick = () => {
-    document.documentElement.requestFullscreen?.().catch(() => {});
-  };
+  const handleClick = () => document.documentElement.requestFullscreen?.().catch(() => {});
 
   if (!state || !connected) {
     return (
@@ -91,7 +118,8 @@ export default function DistanceDisplay() {
 
   return (
     <div className="display-fullscreen" onClick={handleClick}>
-      <TargetCanvas state={state} flashActive={flashActive} transitionProgress={transitionProgress} displayType="distance" />
+      <TargetCanvas state={state} flashActive={flashActive} transitionProgress={transitionProgress}
+        displayType="distance" saccadeLockX={saccadeLockX} />
     </div>
   );
 }

@@ -30,8 +30,11 @@ const defaultConfig = {
   redIntensity: 100,      // 0-100% target brightness
   greenIntensity: 100,
   antiBleedLevel: 0,      // 0-50: dim background fill of both colors to mask bleed-through
-  paragraphFontSizeDistance: 56, // px, ~20/30 on 55" 4K at 25ft
-  paragraphFontSizeNear: 15,    // px, ~11pt on tablet
+  paragraphFontSizeDistance: 56,
+  paragraphFontSizeNear: 15,
+  saccadeJumps: 8,
+  saccadeAmplitudePx: 300,
+  saccadePauseDurationMs: 200,
   mirrorDistance: true,
   displayPPI: 96,
   nearDisplayPPI: 132,
@@ -142,7 +145,7 @@ export function updateCalibration(session, display, data) {
   };
 }
 
-export function captureTrial(session) {
+export function captureTrial(session, protocol = 'closeEyes') {
   const phase = session.phase === 'distance-align' ? 'distance' : 'near';
   const ppi = phase === 'distance' ? session.config.displayPPI : session.config.nearDisplayPPI;
   const distanceMm = phase === 'distance'
@@ -179,6 +182,7 @@ export function captureTrial(session) {
     horizontalPrism: round4(horizontalPrism),
     verticalPrism: round4(verticalPrism),
     vectorPrism: round4(vectorPrism),
+    protocol,
     capturedAt: new Date().toISOString(),
   };
 

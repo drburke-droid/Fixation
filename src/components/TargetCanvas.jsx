@@ -1,11 +1,12 @@
 import { useRef, useEffect, useCallback } from 'react';
-import { renderTargets, drawAntiBleedBackground } from '../lib/targets';
+import { renderTargets, drawAntiBleedBackground, drawFixationLock } from '../lib/targets';
 
 /**
  * Full-screen canvas for rendering dissociated targets and fixation lock.
  * Used by both distance and near display clients.
+ * saccadeLockX: horizontal offset of fixation lock during saccade sequence (null = normal)
  */
-export default function TargetCanvas({ state, flashActive = false, transitionProgress = null, displayType = 'distance' }) {
+export default function TargetCanvas({ state, flashActive = false, transitionProgress = null, displayType = 'distance', saccadeLockX = null }) {
   const canvasRef = useRef(null);
   const animRef = useRef(null);
 
@@ -29,6 +30,15 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
     }
 
     const phase = state.phase;
+
+    // Saccade sequence — show only the fixation lock jumping horizontally
+    if (saccadeLockX !== null) {
+      const lockSize = (state.config?.fixationLockSizePx || 30);
+      const lockY = h / 3;
+      drawFixationLock(ctx, centerX + saccadeLockX, lockY, lockSize, '#FFFFFF', 2);
+      animRef.current = requestAnimationFrame(draw);
+      return;
+    }
 
     // Color calibration — show one target at a time for dissociation verification
     if (phase === 'color-cal-distance' || phase === 'color-cal-near') {
@@ -110,7 +120,7 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
     }
 
     animRef.current = requestAnimationFrame(draw);
-  }, [state, flashActive, transitionProgress, displayType]);
+  }, [state, flashActive, transitionProgress, displayType, saccadeLockX]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

@@ -44,9 +44,12 @@ export default function Clinician() {
   const [hostStatus, setHostStatus] = useState('');
 
   // Trial workflow
-  const [trialState, setTrialState] = useState('idle'); // idle | waiting | adjusting
+  const [trialState, setTrialState] = useState('idle'); // idle | waiting | saccading | adjusting
+  const [trialProtocol, setTrialProtocol] = useState('closeEyes'); // closeEyes | saccade
   const [eyesOpenTime, setEyesOpenTime] = useState(null);
   const [elapsed, setElapsed] = useState(0);
+  const [saccadeProgress, setSaccadeProgress] = useState(0);
+  const saccadeTimerRef = useRef(null);
 
   // Collapsible sections
   const [showConfig, setShowConfig] = useState(false);
@@ -122,6 +125,9 @@ export default function Clinician() {
             x: next.targets.movableX,
             y: next.targets.movableY,
           });
+        } else if (msg.type === 'double-tap') {
+          // Auto-capture on double-tap during saccade protocol adjusting
+          handleDoubleTapCapture();
         }
       },
       roomName.trim(),
@@ -156,12 +162,11 @@ export default function Clinician() {
     updateSession(prev => setPhase(prev, phase));
   }, [updateSession]);
 
-  const handleCaptureTrial = useCallback(() => {
+  const doCapture = useCallback((protocol) => {
     const s = sessionRef.current;
     if (!s) return;
     const timeToAlignMs = eyesOpenTime ? Date.now() - eyesOpenTime : null;
-    const { session: next, trial } = captureTrial(s);
-    // Add time-to-align to the trial
+    const { session: next } = captureTrial(s, protocol);
     if (timeToAlignMs !== null) {
       next.trials[next.trials.length - 1].timeToAlignMs = timeToAlignMs;
     }
@@ -171,18 +176,75 @@ export default function Clinician() {
     setTrialState('idle');
     setEyesOpenTime(null);
     setElapsed(0);
+    setSaccadeProgress(0);
   }, [eyesOpenTime]);
 
-  const handleNewTrial = useCallback(() => {
+  const handleCaptureTrial = useCallback(() => {
+    doCapture(trialProtocol);
+  }, [doCapture, trialProtocol]);
+
+  // Called when controller sends double-tap
+  const handleDoubleTapCapture = useCallback(() => {
+    // Only auto-capture during adjusting phase
+    if (trialState === 'adjusting') {
+      doCapture(trialProtocol);
+    }
+  }, [doCapture, trialProtocol, trialState]);
+
+  const handleNewTrial = useCallback((protocol) => {
+    setTrialProtocol(protocol);
     updateSession(prev => resetTarget(prev));
     setTrialState('waiting');
     setEyesOpenTime(null);
     setElapsed(0);
+    setSaccadeProgress(0);
   }, [updateSession]);
 
   const handleEyesOpen = useCallback(() => {
     setTrialState('adjusting');
     setEyesOpenTime(Date.now());
+  }, []);
+
+  const handleStartSaccade = useCallback(() => {
+    const s = sessionRef.current;
+    if (!s) return;
+    // Reset targets first
+    const next = resetTarget(s);
+    sessionRef.current = next;
+    setSession({ ...next });
+    hostRef.current?.broadcast({ type: 'state-updated', state: next });
+
+    setTrialState('saccading');
+    setSaccadeProgress(0);
+
+    const cfg = s.config;
+    const jumps = cfg.saccadeJumps || 8;
+    const amplitude = cfg.saccadeAmplitudePx || 300;
+    const pauseMs = cfg.saccadePauseDurationMs || 200;
+
+    // Tell displays to start their local saccade animation
+    hostRef.current?.broadcast({
+      type: 'saccade-start',
+      config: { jumps, amplitude, pauseMs },
+    });
+
+    // Track progress locally and transition to adjusting when done
+    let step = 0;
+    const totalTime = 300 + (jumps + 1) * pauseMs; // 300ms initial pause + jumps * pause
+
+    if (saccadeTimerRef.current) clearInterval(saccadeTimerRef.current);
+    saccadeTimerRef.current = setInterval(() => {
+      step++;
+      setSaccadeProgress(Math.min(step / jumps, 1));
+      if (step > jumps) {
+        clearInterval(saccadeTimerRef.current);
+        saccadeTimerRef.current = null;
+        // Saccade done — transition to adjusting
+        setTrialState('adjusting');
+        setEyesOpenTime(Date.now());
+        setSaccadeProgress(1);
+      }
+    }, pauseMs);
   }, []);
 
   const handleFlashLock = useCallback(() => {
@@ -329,21 +391,33 @@ export default function Clinician() {
           <div className="panel" style={{ borderColor: 'var(--accent)', borderWidth: 2 }}>
             <h3 style={{ color: 'var(--accent)' }}>
               {currentPhase === 'distance-align' ? 'Distance' : 'Near'} Trial
+              {trialProtocol === 'saccade' && <span style={{ fontSize: '11px', color: 'var(--warning)', marginLeft: 6 }}>SACCADE</span>}
+              {trialProtocol === 'closeEyes' && trialState !== 'idle' && <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: 6 }}>CLOSE EYES</span>}
             </h3>
 
-            {/* Trial state machine */}
+            {/* IDLE: choose protocol */}
             {trialState === 'idle' && (
               <div>
-                <button className="primary" onClick={handleNewTrial}
-                  style={{ width: '100%', padding: '10px', fontSize: '14px' }}>
-                  New Trial (Reset Targets)
-                </button>
-                <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 6 }}>
-                  Instruct patient to close eyes
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 8 }}>Choose protocol:</div>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+                  <button className="primary" onClick={() => handleNewTrial('closeEyes')}
+                    style={{ flex: 1, padding: '10px', fontSize: '13px' }}>
+                    Close Eyes Protocol
+                  </button>
+                  <button className="accent" onClick={() => handleNewTrial('saccade')}
+                    style={{ flex: 1, padding: '10px', fontSize: '13px' }}>
+                    Saccade Protocol
+                  </button>
+                </div>
+                <p style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                  Close Eyes: patient closes eyes → opens → adjusts → clinician captures<br/>
+                  Saccade: fixation lock jumps L/R → targets appear → patient adjusts → double-tap captures
                 </p>
               </div>
             )}
-            {trialState === 'waiting' && (
+
+            {/* WAITING: protocol-specific instructions */}
+            {trialState === 'waiting' && trialProtocol === 'closeEyes' && (
               <div>
                 <p style={{ fontSize: '13px', color: 'var(--warning)', marginBottom: 8 }}>
                   Targets reset. Patient's eyes should be closed.
@@ -354,10 +428,52 @@ export default function Clinician() {
                 </button>
               </div>
             )}
+            {trialState === 'waiting' && trialProtocol === 'saccade' && (
+              <div>
+                <p style={{ fontSize: '13px', color: 'var(--warning)', marginBottom: 8 }}>
+                  Targets reset. Ready to run saccade sequence.
+                </p>
+                <button className="accent" onClick={handleStartSaccade}
+                  style={{ width: '100%', padding: '10px', fontSize: '14px' }}>
+                  Start Saccade Sequence
+                </button>
+                <p style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: 4 }}>
+                  {session.config.saccadeJumps} jumps, {session.config.saccadeAmplitudePx}px amplitude, {session.config.saccadePauseDurationMs}ms pause
+                </p>
+              </div>
+            )}
+
+            {/* SACCADING: animation in progress */}
+            {trialState === 'saccading' && (
+              <div>
+                <p style={{ fontSize: '13px', color: '#ff9800', marginBottom: 6 }}>
+                  Saccade sequence running...
+                </p>
+                <div style={{
+                  height: 6, borderRadius: 3, background: 'var(--bg-tertiary)', overflow: 'hidden', marginBottom: 8,
+                }}>
+                  <div style={{
+                    height: '100%', width: `${saccadeProgress * 100}%`,
+                    background: '#ff9800', borderRadius: 3, transition: 'width 0.15s',
+                  }} />
+                </div>
+                <button className="danger" onClick={() => {
+                  if (saccadeTimerRef.current) clearInterval(saccadeTimerRef.current);
+                  hostRef.current?.broadcast({ type: 'saccade-stop' });
+                  setTrialState('idle');
+                  setSaccadeProgress(0);
+                }} style={{ fontSize: '11px' }}>Cancel</button>
+              </div>
+            )}
+
+            {/* ADJUSTING: patient aligns targets */}
             {trialState === 'adjusting' && (
               <div>
                 <p style={{ fontSize: '12px', color: 'var(--success)', marginBottom: 4 }}>
                   Patient adjusting... ({(elapsed / 1000).toFixed(1)}s)
+                  {trialProtocol === 'saccade' && (
+                    <span style={{ color: 'var(--text-muted)' }}> — awaiting double-tap or capture</span>
+                  )}
                 </p>
                 <button className="primary" onClick={handleCaptureTrial}
                   style={{
@@ -372,7 +488,7 @@ export default function Clinician() {
               </div>
             )}
 
-            {/* Quick actions during alignment */}
+            {/* Quick actions */}
             <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <select value={session.config.movementSensitivity}
                 onChange={e => handleSetSensitivity(e.target.value)}
@@ -386,6 +502,8 @@ export default function Clinician() {
                 const s = sessionRef.current;
                 if (s) hostRef.current?.broadcast({ type: 'state-updated', state: s });
               }} style={{ fontSize: '11px' }}>Resend</button>
+              <button onClick={() => { setTrialState('idle'); setSaccadeProgress(0); }}
+                style={{ fontSize: '11px' }}>Back</button>
             </div>
 
             {/* Advance */}
@@ -623,6 +741,26 @@ export default function Clinician() {
               )}
               <div className="field-row" style={{ marginBottom: 6 }}>
                 <div>
+                  <label>Saccade jumps</label>
+                  <input type="number" value={session.config.saccadeJumps}
+                    onChange={e => handleUpdateConfig({ saccadeJumps: Number(e.target.value) })}
+                    style={{ width: '100%' }} />
+                </div>
+                <div>
+                  <label>Amplitude (px)</label>
+                  <input type="number" value={session.config.saccadeAmplitudePx}
+                    onChange={e => handleUpdateConfig({ saccadeAmplitudePx: Number(e.target.value) })}
+                    style={{ width: '100%' }} />
+                </div>
+                <div>
+                  <label>Pause (ms)</label>
+                  <input type="number" value={session.config.saccadePauseDurationMs}
+                    onChange={e => handleUpdateConfig({ saccadePauseDurationMs: Number(e.target.value) })}
+                    style={{ width: '100%' }} />
+                </div>
+              </div>
+              <div className="field-row" style={{ marginBottom: 6 }}>
+                <div>
                   <label>Dist PPI</label>
                   <input type="number" value={session.config.displayPPI}
                     onChange={e => handleUpdateConfig({ displayPPI: Number(e.target.value) })}
@@ -832,7 +970,7 @@ export default function Clinician() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                    {['#','Phase','Horizontal','Vertical','Vector','Type','Time'].map(h => (
+                    {['#','Proto','Phase','Horizontal','Vertical','Vector','Type','Time'].map(h => (
                       <th key={h} style={thStyle}>{h}</th>
                     ))}
                   </tr>
@@ -843,6 +981,7 @@ export default function Clinician() {
                     return (
                       <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
                         <td style={tdStyle}>{t.trialNumber}</td>
+                        <td style={{ ...tdStyle, fontSize: '10px' }}>{t.protocol === 'saccade' ? 'SAC' : 'CE'}</td>
                         <td style={tdStyle}>{t.phase}</td>
                         <td style={{ ...tdStyle, fontWeight: 'bold' }}>
                           {formatPrism(t.horizontalPrism, labels.hBase)}

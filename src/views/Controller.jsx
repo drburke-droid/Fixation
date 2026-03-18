@@ -10,43 +10,38 @@ const SENSITIVITY = {
 
 const DEAD_ZONE = 5;
 const EMIT_INTERVAL = 30;
+const DOUBLE_TAP_INTERVAL = 400; // ms between taps
+const TAP_MOVE_THRESHOLD = 20;   // px max movement to count as tap
 
 export default function Controller() {
   const { sessionId: hostPeerId } = useParams();
   const [connected, setConnected] = useState(false);
   const [status, setStatus] = useState('Initializing...');
   const [sensitivity, setSensitivity] = useState('normal');
+  const [doubleTapFeedback, setDoubleTapFeedback] = useState(false);
   const clientRef = useRef(null);
-  const touchRef = useRef({ lastX: 0, lastY: 0, lastEmit: 0 });
+  const touchRef = useRef({ lastX: 0, lastY: 0, startX: 0, startY: 0, lastEmit: 0 });
   const mountedRef = useRef(true);
+  const lastTapRef = useRef(0);
 
   useEffect(() => {
     mountedRef.current = true;
-
     const promise = connectToHost(
-      hostPeerId,
-      'controller',
+      hostPeerId, 'controller',
       (msg) => {
         if (!mountedRef.current) return;
         if (msg.type === 'state-updated' && msg.state?.config) {
           setSensitivity(msg.state.config.movementSensitivity || 'normal');
         }
       },
-      () => {
-        if (!mountedRef.current) return;
-        setConnected(false);
-      },
-      (statusMsg) => {
-        if (mountedRef.current) setStatus(statusMsg);
-      },
+      () => { if (mountedRef.current) setConnected(false); },
+      (s) => { if (mountedRef.current) setStatus(s); },
     );
-
     promise.then(client => {
       if (!mountedRef.current) { client.destroy(); return; }
       clientRef.current = client;
       setConnected(true);
     });
-
     return () => {
       mountedRef.current = false;
       clientRef.current?.destroy();
@@ -54,7 +49,6 @@ export default function Controller() {
     };
   }, [hostPeerId]);
 
-  // Watch for reconnection via status changes
   useEffect(() => {
     if (status === 'Connected!') setConnected(true);
     else if (status.includes('retrying') || status.includes('Disconnected') || status.includes('timed out')) {
@@ -79,6 +73,8 @@ export default function Controller() {
     e.preventDefault();
     const touch = e.touches[0];
     touchRef.current = {
+      startX: touch.clientX,
+      startY: touch.clientY,
       lastX: touch.clientX,
       lastY: touch.clientY,
       lastEmit: performance.now(),
@@ -113,7 +109,28 @@ export default function Controller() {
 
   const handleTouchEnd = useCallback((e) => {
     e.preventDefault();
-  }, []);
+    if (!connected) return;
+
+    // Check if this was a tap (minimal movement)
+    const ref = touchRef.current;
+    const touch = e.changedTouches[0];
+    const dx = Math.abs(touch.clientX - ref.startX);
+    const dy = Math.abs(touch.clientY - ref.startY);
+
+    if (dx < TAP_MOVE_THRESHOLD && dy < TAP_MOVE_THRESHOLD) {
+      const now = Date.now();
+      if (now - lastTapRef.current < DOUBLE_TAP_INTERVAL) {
+        // Double tap detected
+        lastTapRef.current = 0;
+        clientRef.current?.send({ type: 'double-tap' });
+        // Visual feedback
+        setDoubleTapFeedback(true);
+        setTimeout(() => setDoubleTapFeedback(false), 300);
+      } else {
+        lastTapRef.current = now;
+      }
+    }
+  }, [connected]);
 
   useEffect(() => {
     const prevent = (e) => e.preventDefault();
@@ -125,8 +142,10 @@ export default function Controller() {
     <div
       style={{
         position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
-        background: '#111', touchAction: 'none', userSelect: 'none',
+        background: doubleTapFeedback ? '#1a3a1a' : '#111',
+        touchAction: 'none', userSelect: 'none',
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        transition: 'background 0.15s',
       }}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
@@ -134,13 +153,16 @@ export default function Controller() {
     >
       {connected ? (
         <>
-          <div style={{ color: '#3fb950', fontSize: '16px', marginBottom: '20px', textAlign: 'center' }}>
+          <div style={{ color: '#3fb950', fontSize: '16px', marginBottom: '16px', textAlign: 'center' }}>
             Connected
           </div>
           <div style={{ color: '#8b949e', fontSize: '14px', textAlign: 'center', padding: '0 40px' }}>
-            Swipe anywhere to move the target
+            Swipe to move target
           </div>
-          <div style={{ color: '#484f58', fontSize: '12px', marginTop: '10px' }}>
+          <div style={{ color: '#58a6ff', fontSize: '13px', marginTop: '12px', textAlign: 'center' }}>
+            Double-tap when aligned
+          </div>
+          <div style={{ color: '#484f58', fontSize: '12px', marginTop: '8px' }}>
             Sensitivity: {sensitivity}
           </div>
           <div style={{
@@ -159,11 +181,9 @@ export default function Controller() {
           <div style={{ color: '#8b949e', fontSize: '14px', marginBottom: '8px', padding: '0 20px' }}>
             {status}
           </div>
-          <div style={{ color: '#484f58', fontSize: '12px' }}>
-            Host: {hostPeerId}
-          </div>
+          <div style={{ color: '#484f58', fontSize: '12px' }}>Host: {hostPeerId}</div>
           <div style={{ color: '#484f58', fontSize: '11px', marginTop: '16px' }}>
-            Retrying automatically — keep this screen open
+            Retrying automatically
           </div>
         </div>
       )}
