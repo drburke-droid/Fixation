@@ -73,8 +73,8 @@ export function drawHorizontalLine(ctx, x, y, size, color, strokeWidth = 3) {
   ctx.stroke();
 }
 
-/** Draw downward-pointing arrow (long tail, prominent head) */
-export function drawArrowDown(ctx, x, y, size, color, strokeWidth = 3) {
+/** Draw right-pointing HORIZONTAL arrow (long tail, prominent head) */
+export function drawArrowRight(ctx, x, y, size, color, strokeWidth = 3) {
   const tailLen = size * 1.8;
   const headLen = size * 0.6;
   const headW = size * 0.5;
@@ -83,22 +83,22 @@ export function drawArrowDown(ctx, x, y, size, color, strokeWidth = 3) {
   ctx.lineWidth = strokeWidth;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  // Tail
+  // Horizontal tail
   ctx.beginPath();
-  ctx.moveTo(x, y - tailLen);
-  ctx.lineTo(x, y + headLen * 0.3);
+  ctx.moveTo(x - tailLen, y);
+  ctx.lineTo(x + headLen * 0.3, y);
   ctx.stroke();
-  // Arrowhead
+  // Arrowhead pointing right
   ctx.beginPath();
-  ctx.moveTo(x, y + headLen);
-  ctx.lineTo(x - headW, y - headLen * 0.2);
-  ctx.lineTo(x + headW, y - headLen * 0.2);
+  ctx.moveTo(x + headLen, y);
+  ctx.lineTo(x - headLen * 0.2, y - headW);
+  ctx.lineTo(x - headLen * 0.2, y + headW);
   ctx.closePath();
   ctx.fill();
 }
 
-/** Draw upward-pointing arrow (long tail, prominent head) */
-export function drawArrowUp(ctx, x, y, size, color, strokeWidth = 3) {
+/** Draw left-pointing HORIZONTAL arrow (long tail, prominent head) */
+export function drawArrowLeft(ctx, x, y, size, color, strokeWidth = 3) {
   const tailLen = size * 1.8;
   const headLen = size * 0.6;
   const headW = size * 0.5;
@@ -107,16 +107,16 @@ export function drawArrowUp(ctx, x, y, size, color, strokeWidth = 3) {
   ctx.lineWidth = strokeWidth;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  // Tail
+  // Horizontal tail
   ctx.beginPath();
-  ctx.moveTo(x, y + tailLen);
-  ctx.lineTo(x, y - headLen * 0.3);
+  ctx.moveTo(x + tailLen, y);
+  ctx.lineTo(x - headLen * 0.3, y);
   ctx.stroke();
-  // Arrowhead
+  // Arrowhead pointing left
   ctx.beginPath();
-  ctx.moveTo(x, y - headLen);
-  ctx.lineTo(x - headW, y + headLen * 0.2);
-  ctx.lineTo(x + headW, y + headLen * 0.2);
+  ctx.moveTo(x - headLen, y);
+  ctx.lineTo(x + headLen * 0.2, y - headW);
+  ctx.lineTo(x + headLen * 0.2, y + headW);
   ctx.closePath();
   ctx.fill();
 }
@@ -217,10 +217,10 @@ export const targetPresets = {
     drawTarget2: drawHorizontalLine,
   },
   'arrows-vert': {
-    name: 'Opposing Arrows (Vertical align)',
-    description: 'Arrow pointing down + arrow pointing up — vertical alignment only',
-    drawTarget1: drawArrowDown,
-    drawTarget2: drawArrowUp,
+    name: 'Horizontal Arrows (Vertical align)',
+    description: 'Arrow pointing right + arrow pointing left — patient aligns vertically',
+    drawTarget1: drawArrowRight,
+    drawTarget2: drawArrowLeft,
   },
   'paragraph': {
     name: 'Alternating Word Paragraph',
