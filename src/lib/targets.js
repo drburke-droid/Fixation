@@ -73,50 +73,59 @@ export function drawHorizontalLine(ctx, x, y, size, color, strokeWidth = 3) {
   ctx.stroke();
 }
 
-/** Draw right-pointing HORIZONTAL arrow (long tail, prominent head) */
+/**
+ * Draw right-pointing HORIZONTAL arrow.
+ * Tip of arrowhead is at (x, y) — so when two arrows are at the same
+ * position, their tips touch (perfect alignment).
+ * Arrow extends to the LEFT from the tip.
+ */
 export function drawArrowRight(ctx, x, y, size, color, strokeWidth = 3) {
-  const tailLen = size * 1.8;
-  const headLen = size * 0.6;
+  const tailLen = size * 2.0;
+  const headLen = size * 0.7;
   const headW = size * 0.5;
   ctx.strokeStyle = color;
   ctx.fillStyle = color;
   ctx.lineWidth = strokeWidth;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  // Horizontal tail
+  // Tail extends LEFT from the head base
   ctx.beginPath();
-  ctx.moveTo(x - tailLen, y);
-  ctx.lineTo(x + headLen * 0.3, y);
+  ctx.moveTo(x - headLen - tailLen, y);
+  ctx.lineTo(x - headLen, y);
   ctx.stroke();
-  // Arrowhead pointing right
+  // Arrowhead — tip at (x, y)
   ctx.beginPath();
-  ctx.moveTo(x + headLen, y);
-  ctx.lineTo(x - headLen * 0.2, y - headW);
-  ctx.lineTo(x - headLen * 0.2, y + headW);
+  ctx.moveTo(x, y);
+  ctx.lineTo(x - headLen, y - headW);
+  ctx.lineTo(x - headLen, y + headW);
   ctx.closePath();
   ctx.fill();
 }
 
-/** Draw left-pointing HORIZONTAL arrow (long tail, prominent head) */
+/**
+ * Draw left-pointing HORIZONTAL arrow.
+ * Tip of arrowhead is at (x, y) — tips touch when aligned.
+ * Arrow extends to the RIGHT from the tip.
+ */
 export function drawArrowLeft(ctx, x, y, size, color, strokeWidth = 3) {
-  const tailLen = size * 1.8;
-  const headLen = size * 0.6;
+  const tailLen = size * 2.0;
+  const headLen = size * 0.7;
   const headW = size * 0.5;
   ctx.strokeStyle = color;
   ctx.fillStyle = color;
   ctx.lineWidth = strokeWidth;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  // Horizontal tail
+  // Tail extends RIGHT from the head base
   ctx.beginPath();
-  ctx.moveTo(x + tailLen, y);
-  ctx.lineTo(x - headLen * 0.3, y);
+  ctx.moveTo(x + headLen + tailLen, y);
+  ctx.lineTo(x + headLen, y);
   ctx.stroke();
-  // Arrowhead pointing left
+  // Arrowhead — tip at (x, y)
   ctx.beginPath();
-  ctx.moveTo(x - headLen, y);
-  ctx.lineTo(x + headLen * 0.2, y - headW);
-  ctx.lineTo(x + headLen * 0.2, y + headW);
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + headLen, y - headW);
+  ctx.lineTo(x + headLen, y + headW);
   ctx.closePath();
   ctx.fill();
 }

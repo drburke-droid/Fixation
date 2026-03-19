@@ -48,12 +48,12 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
 
       // Draw instruction text — wide container, above targets
       if (ap.message) {
-        const fontSize = Math.min(h * 0.035, w / 28);
+        const fontSize = Math.min(h * 0.045, w / 20);
         ctx.font = `500 ${fontSize}px -apple-system, sans-serif`;
         ctx.fillStyle = 'rgba(255,255,255,0.85)';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        const maxW = w * 0.7;
+        const maxW = w * 0.75;
 
         const allLines = [];
         for (const rawLine of ap.message.split('\n')) {
@@ -73,7 +73,9 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
         }
 
         const lineH = fontSize * 1.5;
-        const startY = h * 0.45;
+        const blockH = allLines.length * lineH;
+        // Place in bottom 30% of screen — well below targets
+        const startY = h * 0.72 - blockH / 2;
         allLines.forEach((line, i) => {
           ctx.fillText(line, centerX, startY + i * lineH);
         });
