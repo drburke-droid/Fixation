@@ -75,7 +75,7 @@ export function computeTrialMetrics(xPx, yPx, ppi, distanceMm) {
 
 /**
  * Determine which eye controls the movable target.
- * Default: red target seen by left eye (green lens), movableIsRed = true → left eye.
+ * Default: red target seen by right eye (red lens), movableIsRed = true → right eye.
  */
 export function getMovableEye(config, targets) {
   if (targets.movableIsRed) {
@@ -88,13 +88,13 @@ export function getMovableEye(config, targets) {
 /**
  * Get clinical prism direction labels from displacement.
  *
- * Sign convention (when movable eye = left, default setup):
- *  +X = patient moved target rightward = eso FD (crossed) = correcting prism Base-Out
- *  -X = patient moved target leftward  = exo FD (uncrossed) = correcting prism Base-In
- *  -Y = patient moved target upward    = L hyper = correcting prism Base-Down OL
- *  +Y = patient moved target downward  = L hypo (R hyper) = correcting prism Base-Up OL
+ * Sign convention (default: movable eye = right, red lens):
+ *  +X = patient moved target rightward = exo FD (uncrossed) = correcting prism Base-In
+ *  -X = patient moved target leftward  = eso FD (crossed) = correcting prism Base-Out
+ *  -Y = patient moved target upward    = R hyper = correcting prism Base-Down OD
+ *  +Y = patient moved target downward  = R hypo = correcting prism Base-Up OD
  *
- * When movable eye = right, horizontal directions flip.
+ * When movable eye = left, horizontal directions flip.
  */
 export function getPrismLabels(xPx, yPx, config, targets) {
   const movableEye = getMovableEye(config, targets);
