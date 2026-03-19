@@ -74,11 +74,30 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
 
         const lineH = fontSize * 1.5;
         const blockH = allLines.length * lineH;
-        // Place in bottom 30% of screen — well below targets
-        const startY = h * 0.72 - blockH / 2;
-        allLines.forEach((line, i) => {
-          ctx.fillText(line, centerX, startY + i * lineH);
-        });
+        // Targets sit in middle 10-20% of screen. Use top and bottom zones.
+        // If text fits in top zone (above 40%), put it there. Otherwise split.
+        const topZoneEnd = h * 0.38;
+        const bottomZoneStart = h * 0.62;
+
+        if (blockH <= topZoneEnd - h * 0.05) {
+          // Fits in top zone — center it there
+          const startY = (topZoneEnd - blockH) / 2 + h * 0.03;
+          allLines.forEach((line, i) => {
+            ctx.fillText(line, centerX, startY + i * lineH);
+          });
+        } else {
+          // Split: first half in top, rest in bottom
+          const midIdx = Math.ceil(allLines.length / 2);
+          const topLines = allLines.slice(0, midIdx);
+          const bottomLines = allLines.slice(midIdx);
+          const topStart = topZoneEnd - topLines.length * lineH;
+          topLines.forEach((line, i) => {
+            ctx.fillText(line, centerX, topStart + i * lineH);
+          });
+          bottomLines.forEach((line, i) => {
+            ctx.fillText(line, centerX, bottomZoneStart + i * lineH);
+          });
+        }
       }
 
       animRef.current = requestAnimationFrame(draw);
