@@ -29,33 +29,31 @@ const PHASES = [
 
 const LOCK_MODES = ['always', 'pulse', 'flash', 'off'];
 
-// Auto protocol step definitions — all timer-based, continuous recording throughout
+// Auto protocol: continuous fixation tracking + vertical alignment
 const AUTO_STEPS = [
+  // Introduction
   { id: 'welcome', dur: 5000, msg: 'Welcome to the\nFixation Disparity Assessment', red: false, green: false, lock: false, move: false },
-  { id: 'intro-left', dur: 4000, msg: 'Your left eye sees this target', red: true, green: false, lock: false, move: false },
-  { id: 'intro-right', dur: 4000, msg: 'Your right eye sees this target', red: false, green: true, lock: false, move: false },
+  { id: 'intro-left', dur: 4000, msg: 'Your left eye\nsees this target', red: true, green: false, lock: false, move: false },
+  { id: 'intro-right', dur: 4000, msg: 'Your right eye\nsees this target', red: false, green: true, lock: false, move: false },
   { id: 'intro-lock', dur: 4000, msg: 'Both eyes see\nthis fixation target', red: false, green: false, lock: true, move: false },
-  { id: 'intro-both', dur: 4000, msg: 'Now you see all targets together', red: true, green: true, lock: true, move: false },
-  { id: 'intro-move', dur: 15000, msg: 'Drag your finger on your phone\nto move the target.\nTry putting the cross inside the circle.', red: true, green: true, lock: true, move: true },
-  { id: 'intro-blink', dur: 6000, msg: 'If you lose a target, try blinking.\nIf that doesn\'t work, say "I lost it".\n\nThe test will now begin.', red: true, green: true, lock: true, move: false },
-  // Close eyes sequence (3x — targets hidden during close, 5s close, 10s align)
-  { id: 'ce-close-1', dur: 5000, msg: 'Close your eyes now.', red: false, green: false, lock: false, move: false, reset: true, marker: 'Eyes Closed 1' },
-  { id: 'ce-open-1', dur: 10000, msg: 'Open your eyes.\nAlign the targets.', red: true, green: true, lock: true, move: true, record: true, marker: 'Eyes Open 1' },
-  { id: 'ce-close-2', dur: 5000, msg: 'Close your eyes.', red: false, green: false, lock: false, move: false, reset: true, marker: 'Eyes Closed 2' },
-  { id: 'ce-open-2', dur: 10000, msg: 'Open your eyes.\nAlign the targets.', red: true, green: true, lock: true, move: true, record: true, marker: 'Eyes Open 2' },
-  { id: 'ce-close-3', dur: 5000, msg: 'Close your eyes.', red: false, green: false, lock: false, move: false, reset: true, marker: 'Eyes Closed 3' },
-  { id: 'ce-open-3', dur: 10000, msg: 'Open your eyes.\nAlign the targets.', red: true, green: true, lock: true, move: true, record: true, marker: 'Eyes Open 3' },
-  // Saccade sequence (3x — saccade, then 10s align)
-  { id: 'sac-instruct', dur: 3000, msg: 'Follow the jumping target\nwith your eyes.', red: false, green: false, lock: true, move: false, reset: true, marker: 'Saccade Intro' },
-  { id: 'sac-run-1', dur: 0, msg: '', red: false, green: false, lock: true, move: false, runSaccade: true, marker: 'Saccade 1' },
-  { id: 'sac-align-1', dur: 10000, msg: 'Align the targets.', red: true, green: true, lock: true, move: true, record: true, marker: 'Recovery 1' },
-  { id: 'sac-run-2', dur: 0, msg: '', red: false, green: false, lock: true, move: false, runSaccade: true, reset: true, marker: 'Saccade 2' },
-  { id: 'sac-align-2', dur: 10000, msg: 'Align the targets.', red: true, green: true, lock: true, move: true, record: true, marker: 'Recovery 2' },
-  { id: 'sac-run-3', dur: 0, msg: '', red: false, green: false, lock: true, move: false, runSaccade: true, reset: true, marker: 'Saccade 3' },
-  { id: 'sac-align-3', dur: 10000, msg: 'Align the targets.', red: true, green: true, lock: true, move: true, record: true, marker: 'Recovery 3' },
-  // Continuous tracking (30s with lock, 30s without)
-  { id: 'track-lock', dur: 30000, msg: 'Keep the targets aligned.', red: true, green: true, lock: true, move: true, reset: true, record: true, marker: 'Tracking (lock on)' },
-  { id: 'track-nolock', dur: 30000, msg: 'Keep the targets aligned.\nFixation target will disappear.', red: true, green: true, lock: false, move: true, record: true, marker: 'Tracking (lock off)' },
+  { id: 'intro-both', dur: 4000, msg: 'Now you see\nall targets together', red: true, green: true, lock: true, move: false },
+  { id: 'intro-move', dur: 15000, msg: 'Drag your finger\non your phone to\nmove the target.\nTry putting the cross\ninside the circle.', red: true, green: true, lock: true, move: true },
+  { id: 'intro-blink', dur: 6000, msg: 'If you lose a target\ntry blinking.\nIf that doesn\'t work\nsay "I lost it".\n\nThe test will begin now.', red: true, green: true, lock: true, move: false },
+
+  // === HORIZONTAL FD: Continuous tracking with ring/cross ===
+  // Phase 1: With fixation lock (20s)
+  { id: 'h-lock-start', dur: 2000, msg: 'Keep the targets\naligned.', red: true, green: true, lock: true, move: true, reset: true, marker: 'H: Lock On' },
+  { id: 'h-lock', dur: 20000, msg: '', red: true, green: true, lock: true, move: true, record: true },
+  // Phase 2: Lock fades — transition message
+  { id: 'h-fade', dur: 3000, msg: 'The fixation target\nwill now disappear.\nKeep the targets aligned.', red: true, green: true, lock: true, move: true, record: true, marker: 'H: Lock Fading' },
+  // Phase 3: No lock — dissociated (25s)
+  { id: 'h-nolock', dur: 25000, msg: '', red: true, green: true, lock: false, move: true, record: true, marker: 'H: Dissociated' },
+
+  // === VERTICAL FD: Two horizontal lines ===
+  { id: 'v-instruct', dur: 5000, msg: 'Now align these\nhorizontal lines.\nMove the line up or\ndown to match.', red: true, green: true, lock: false, move: true, reset: true, marker: 'V: Instructions', preset: 'horiz-horiz' },
+  // Vertical tracking (30s, no lock)
+  { id: 'v-track', dur: 30000, msg: '', red: true, green: true, lock: false, move: true, record: true, marker: 'V: Tracking', preset: 'horiz-horiz' },
+
   // Complete
   { id: 'complete', dur: 0, msg: 'Test complete.\nThank you.', red: false, green: false, lock: false, move: false, marker: 'Complete' },
 ];
@@ -312,6 +310,11 @@ export default function Clinician() {
     // Reset targets if needed
     if (step.reset) {
       s.targets = { ...s.targets, movableX: 0, movableY: 0 };
+    }
+
+    // Switch target preset if specified
+    if (step.preset) {
+      s.config = { ...s.config, targetPreset: step.preset };
     }
 
     // Add phase marker
@@ -1075,6 +1078,7 @@ export default function Clinician() {
                     <option value="cross-ring">Cross & Ring</option>
                     <option value="triangle-square">House</option>
                     <option value="vert-horiz">Plus Lines</option>
+                    <option value="horiz-horiz">Horiz Lines (V only)</option>
                     <option value="paragraph">Paragraph</option>
                   </select>
                 </div>

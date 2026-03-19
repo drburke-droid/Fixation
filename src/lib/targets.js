@@ -168,6 +168,12 @@ export const targetPresets = {
     drawTarget1: drawVerticalLine,
     drawTarget2: drawHorizontalLine,
   },
+  'horiz-horiz': {
+    name: 'Two Horizontal Lines (Vertical align)',
+    description: 'Two horizontal lines — vertical alignment only',
+    drawTarget1: drawHorizontalLine,
+    drawTarget2: drawHorizontalLine,
+  },
   'paragraph': {
     name: 'Alternating Word Paragraph',
     description: 'Text paragraph with alternating colored words',
