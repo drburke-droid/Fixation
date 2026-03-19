@@ -33,10 +33,10 @@ const LOCK_MODES = ['always', 'pulse', 'flash', 'off'];
 const AUTO_STEPS = [
   // Introduction — using vertical arrows for horizontal alignment
   { id: 'welcome', dur: 5000, msg: 'Fixation Disparity Assessment', red: false, green: false, lock: false, move: false, preset: 'arrows-horiz' },
-  { id: 'intro-left', dur: 4000, msg: 'Your left eye sees this arrow', red: true, green: false, lock: false, move: false, preset: 'arrows-horiz' },
   { id: 'intro-right', dur: 4000, msg: 'Your right eye sees this arrow', red: false, green: true, lock: false, move: false, preset: 'arrows-horiz' },
+  { id: 'intro-left', dur: 4000, msg: 'Your left eye sees this arrow', red: true, green: false, lock: false, move: false, preset: 'arrows-horiz' },
   { id: 'intro-both', dur: 3000, msg: 'Both arrows together', red: true, green: true, lock: false, move: false, preset: 'arrows-horiz' },
-  { id: 'intro-move', dur: 15000, msg: 'Swipe your phone to move the arrow. Keep the arrow tips touching.', red: true, green: true, lock: false, move: true, preset: 'arrows-horiz' },
+  { id: 'intro-move', dur: 15000, msg: 'Swipe your phone to move the arrow. Keep the tips touching.', red: true, green: true, lock: false, move: true, preset: 'arrows-horiz' },
   { id: 'intro-blink', dur: 5000, msg: 'If you lose an arrow, blink. Test starting now.', red: true, green: true, lock: false, move: false, preset: 'arrows-horiz' },
 
   // === HORIZONTAL FD: Vertical arrows (patient aligns left/right) ===

@@ -48,7 +48,7 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
 
       // Draw instruction text — wide container, above targets
       if (ap.message) {
-        const fontSize = Math.min(h * 0.045, w / 20);
+        const fontSize = Math.min(h * 0.06, w / 14);
         ctx.font = `500 ${fontSize}px -apple-system, sans-serif`;
         ctx.fillStyle = 'rgba(255,255,255,0.85)';
         ctx.textAlign = 'center';
