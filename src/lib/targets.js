@@ -14,14 +14,15 @@ export function drawRing(ctx, x, y, radius, color, strokeWidth = 3) {
   ctx.stroke();
 }
 
-/** Draw a cross (+) — size parameter = radius, matching drawRing */
+/** Draw a cross (+) — size parameter = radius, cross fits inside ring */
 export function drawCross(ctx, x, y, size, color, strokeWidth = 3) {
-  // size = radius (same as ring), so cross arms span the full diameter
+  // Cross at 70% of ring radius so it sits clearly inside without overlap
+  const arm = size * 0.7;
   ctx.beginPath();
-  ctx.moveTo(x - size, y);
-  ctx.lineTo(x + size, y);
-  ctx.moveTo(x, y - size);
-  ctx.lineTo(x, y + size);
+  ctx.moveTo(x - arm, y);
+  ctx.lineTo(x + arm, y);
+  ctx.moveTo(x, y - arm);
+  ctx.lineTo(x, y + arm);
   ctx.strokeStyle = color;
   ctx.lineWidth = strokeWidth;
   ctx.lineCap = 'round';
@@ -124,60 +125,33 @@ export function drawArrowUp(ctx, x, y, size, color, strokeWidth = 3) {
 }
 
 /**
- * Draw right-pointing HORIZONTAL arrow.
- * Tip of arrowhead is at (x, y) — so when two arrows are at the same
- * position, their tips touch (perfect alignment).
- * Arrow extends to the LEFT from the tip.
+ * Draw a horizontal line from center to the RIGHT edge of screen.
+ * Starts at (x, y) and extends far right (clipped by canvas).
+ * No arrowhead — just a line.
  */
-export function drawArrowRight(ctx, x, y, size, color, strokeWidth = 3) {
-  const tailLen = size * 2.0;
-  const headLen = size * 0.7;
-  const headW = size * 0.5;
+export function drawLineRight(ctx, x, y, size, color, strokeWidth = 3) {
   ctx.strokeStyle = color;
-  ctx.fillStyle = color;
   ctx.lineWidth = strokeWidth;
   ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  // Tail extends LEFT from the head base
-  ctx.beginPath();
-  ctx.moveTo(x - headLen - tailLen, y);
-  ctx.lineTo(x - headLen, y);
-  ctx.stroke();
-  // Arrowhead — tip at (x, y)
   ctx.beginPath();
   ctx.moveTo(x, y);
-  ctx.lineTo(x - headLen, y - headW);
-  ctx.lineTo(x - headLen, y + headW);
-  ctx.closePath();
-  ctx.fill();
+  ctx.lineTo(x + 5000, y); // extends to right edge (canvas clips)
+  ctx.stroke();
 }
 
 /**
- * Draw left-pointing HORIZONTAL arrow.
- * Tip of arrowhead is at (x, y) — tips touch when aligned.
- * Arrow extends to the RIGHT from the tip.
+ * Draw a horizontal line from center to the LEFT edge of screen.
+ * Starts at (x, y) and extends far left (clipped by canvas).
+ * No arrowhead — just a line.
  */
-export function drawArrowLeft(ctx, x, y, size, color, strokeWidth = 3) {
-  const tailLen = size * 2.0;
-  const headLen = size * 0.7;
-  const headW = size * 0.5;
+export function drawLineLeft(ctx, x, y, size, color, strokeWidth = 3) {
   ctx.strokeStyle = color;
-  ctx.fillStyle = color;
   ctx.lineWidth = strokeWidth;
   ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  // Tail extends RIGHT from the head base
-  ctx.beginPath();
-  ctx.moveTo(x + headLen + tailLen, y);
-  ctx.lineTo(x + headLen, y);
-  ctx.stroke();
-  // Arrowhead — tip at (x, y)
   ctx.beginPath();
   ctx.moveTo(x, y);
-  ctx.lineTo(x + headLen, y - headW);
-  ctx.lineTo(x + headLen, y + headW);
-  ctx.closePath();
-  ctx.fill();
+  ctx.lineTo(x - 5000, y); // extends to left edge (canvas clips)
+  ctx.stroke();
 }
 
 /** Draw fixation lock — bold cross with gap and center dot */
@@ -282,10 +256,10 @@ export const targetPresets = {
     drawTarget2: drawArrowUp,
   },
   'arrows-vert': {
-    name: 'Horizontal Arrows (Vertical align)',
-    description: 'Arrow pointing right + arrow pointing left — patient aligns vertically',
-    drawTarget1: drawArrowRight,
-    drawTarget2: drawArrowLeft,
+    name: 'Half Lines (Vertical align)',
+    description: 'Line extending right + line extending left — patient aligns vertically',
+    drawTarget1: drawLineRight,
+    drawTarget2: drawLineLeft,
   },
   'paragraph': {
     name: 'Alternating Word Paragraph',
