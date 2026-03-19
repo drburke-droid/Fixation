@@ -74,6 +74,56 @@ export function drawHorizontalLine(ctx, x, y, size, color, strokeWidth = 3) {
 }
 
 /**
+ * Draw downward-pointing VERTICAL arrow.
+ * Tip at (x, y). Arrow extends upward from tip.
+ */
+export function drawArrowDown(ctx, x, y, size, color, strokeWidth = 3) {
+  const tailLen = size * 2.0;
+  const headLen = size * 0.7;
+  const headW = size * 0.5;
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = strokeWidth;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x, y - headLen - tailLen);
+  ctx.lineTo(x, y - headLen);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x - headW, y - headLen);
+  ctx.lineTo(x + headW, y - headLen);
+  ctx.closePath();
+  ctx.fill();
+}
+
+/**
+ * Draw upward-pointing VERTICAL arrow.
+ * Tip at (x, y). Arrow extends downward from tip.
+ */
+export function drawArrowUp(ctx, x, y, size, color, strokeWidth = 3) {
+  const tailLen = size * 2.0;
+  const headLen = size * 0.7;
+  const headW = size * 0.5;
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = strokeWidth;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x, y + headLen + tailLen);
+  ctx.lineTo(x, y + headLen);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x - headW, y + headLen);
+  ctx.lineTo(x + headW, y + headLen);
+  ctx.closePath();
+  ctx.fill();
+}
+
+/**
  * Draw right-pointing HORIZONTAL arrow.
  * Tip of arrowhead is at (x, y) — so when two arrows are at the same
  * position, their tips touch (perfect alignment).
@@ -224,6 +274,12 @@ export const targetPresets = {
     description: 'Vertical line + horizontal line — aligned they form a plus sign',
     drawTarget1: drawVerticalLine,
     drawTarget2: drawHorizontalLine,
+  },
+  'arrows-horiz': {
+    name: 'Vertical Arrows (Horizontal align)',
+    description: 'Arrow pointing down + arrow pointing up — patient aligns horizontally',
+    drawTarget1: drawArrowDown,
+    drawTarget2: drawArrowUp,
   },
   'arrows-vert': {
     name: 'Horizontal Arrows (Vertical align)',

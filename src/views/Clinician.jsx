@@ -29,25 +29,23 @@ const PHASES = [
 
 const LOCK_MODES = ['always', 'pulse', 'flash', 'off'];
 
-// Auto protocol: continuous fixation tracking + vertical alignment
+// Auto protocol: vertical arrows (horizontal FD) then horizontal arrows (vertical FD). No fixation lock.
 const AUTO_STEPS = [
-  // Introduction
-  { id: 'welcome', dur: 5000, msg: 'Fixation Disparity Assessment', red: false, green: false, lock: false, move: false },
-  { id: 'intro-left', dur: 4000, msg: 'Your left eye sees this target', red: true, green: false, lock: false, move: false },
-  { id: 'intro-right', dur: 4000, msg: 'Your right eye sees this target', red: false, green: true, lock: false, move: false },
-  { id: 'intro-lock', dur: 4000, msg: 'Both eyes see this target', red: false, green: false, lock: true, move: false },
-  { id: 'intro-both', dur: 3000, msg: 'All targets together', red: true, green: true, lock: true, move: false },
-  { id: 'intro-move', dur: 15000, msg: 'Swipe your phone to move the target. Put the cross inside the circle. Tap when centred.', red: true, green: true, lock: true, move: true },
-  { id: 'intro-blink', dur: 5000, msg: 'If you lose a target, blink. Test starting now.', red: true, green: true, lock: true, move: false },
+  // Introduction — using vertical arrows for horizontal alignment
+  { id: 'welcome', dur: 5000, msg: 'Fixation Disparity Assessment', red: false, green: false, lock: false, move: false, preset: 'arrows-horiz' },
+  { id: 'intro-left', dur: 4000, msg: 'Your left eye sees this arrow', red: true, green: false, lock: false, move: false, preset: 'arrows-horiz' },
+  { id: 'intro-right', dur: 4000, msg: 'Your right eye sees this arrow', red: false, green: true, lock: false, move: false, preset: 'arrows-horiz' },
+  { id: 'intro-both', dur: 3000, msg: 'Both arrows together', red: true, green: true, lock: false, move: false, preset: 'arrows-horiz' },
+  { id: 'intro-move', dur: 15000, msg: 'Swipe your phone to move the arrow. Keep the arrow tips touching.', red: true, green: true, lock: false, move: true, preset: 'arrows-horiz' },
+  { id: 'intro-blink', dur: 5000, msg: 'If you lose an arrow, blink. Test starting now.', red: true, green: true, lock: false, move: false, preset: 'arrows-horiz' },
 
-  // === HORIZONTAL FD ===
-  { id: 'h-lock-start', dur: 2000, msg: 'Keep targets aligned.', red: true, green: true, lock: true, move: true, reset: true, marker: 'H: Lock On' },
-  { id: 'h-lock', dur: 20000, msg: '', red: true, green: true, lock: true, move: true, record: true },
-  { id: 'h-nolock', dur: 30000, msg: '', red: true, green: true, lock: false, move: true, record: true, marker: 'H: Dissociated' },
+  // === HORIZONTAL FD: Vertical arrows (patient aligns left/right) ===
+  { id: 'h-start', dur: 2000, msg: 'Keep the arrow tips together.', red: true, green: true, lock: false, move: true, reset: true, marker: 'H: Start', preset: 'arrows-horiz' },
+  { id: 'h-track', dur: 45000, msg: '', red: true, green: true, lock: false, move: true, record: true, preset: 'arrows-horiz' },
 
-  // === VERTICAL FD: Opposing arrows ===
-  { id: 'v-instruct', dur: 5000, msg: 'Align the arrows up and down.', red: true, green: true, lock: false, move: true, reset: true, marker: 'V: Instructions', preset: 'arrows-vert' },
-  { id: 'v-track', dur: 30000, msg: '', red: true, green: true, lock: false, move: true, record: true, marker: 'V: Tracking', preset: 'arrows-vert' },
+  // === VERTICAL FD: Horizontal arrows (patient aligns up/down) ===
+  { id: 'v-instruct', dur: 5000, msg: 'Now keep these arrow tips together.', red: true, green: true, lock: false, move: true, reset: true, marker: 'V: Start', preset: 'arrows-vert' },
+  { id: 'v-track', dur: 45000, msg: '', red: true, green: true, lock: false, move: true, record: true, marker: 'V: Tracking', preset: 'arrows-vert' },
 
   // Complete
   { id: 'complete', dur: 0, msg: 'Test complete.\nThank you.', red: false, green: false, lock: false, move: false, marker: 'Complete' },
@@ -1061,7 +1059,8 @@ export default function Clinician() {
                     <option value="cross-ring">Cross & Ring</option>
                     <option value="triangle-square">House</option>
                     <option value="vert-horiz">Plus Lines</option>
-                    <option value="arrows-vert">Arrows (V only)</option>
+                    <option value="arrows-horiz">V-Arrows (H align)</option>
+                    <option value="arrows-vert">H-Arrows (V align)</option>
                     <option value="paragraph">Paragraph</option>
                   </select>
                 </div>
@@ -1388,7 +1387,7 @@ export default function Clinician() {
             {session.autoProtocol?.phaseMarkers?.length > 0 && session.positionLog?.length > 10 && (
               <div className="panel">
                 <h3>Horizontal Alignment</h3>
-                <HorizontalTimelineGraph positionLog={session.positionLog || []} phaseMarkers={session.autoProtocol.phaseMarkers} startTime={session.autoProtocol.startTime} />
+                <HorizontalTimelineGraph positionLog={session.positionLog || []} phaseMarkers={session.autoProtocol.phaseMarkers} startTime={session.autoProtocol.startTime} config={session.config} />
               </div>
             )}
 
@@ -1396,7 +1395,7 @@ export default function Clinician() {
             {session.autoProtocol?.phaseMarkers?.length > 0 && session.positionLog?.length > 10 && (
               <div className="panel">
                 <h3>Vertical Alignment</h3>
-                <VerticalTimelineGraph positionLog={session.positionLog || []} phaseMarkers={session.autoProtocol.phaseMarkers} startTime={session.autoProtocol.startTime} />
+                <VerticalTimelineGraph positionLog={session.positionLog || []} phaseMarkers={session.autoProtocol.phaseMarkers} startTime={session.autoProtocol.startTime} config={session.config} />
               </div>
             )}
 
@@ -1704,7 +1703,7 @@ function PhaseMetricsTable({ positionLog, phaseMarkers, config }) {
  * Exo = right eye moves right, Eso = crosses midline to left.
  * Smoothed with moving average.
  */
-function HorizontalTimelineGraph({ positionLog, phaseMarkers, startTime }) {
+function HorizontalTimelineGraph({ positionLog, phaseMarkers, startTime, config }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {
@@ -1726,6 +1725,15 @@ function HorizontalTimelineGraph({ positionLog, phaseMarkers, startTime }) {
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, w, h);
 
+    // Pixel to prism diopter conversion
+    const ppi = config?.displayPPI || 96;
+    const distMm = config?.distanceOpticalDistanceMm || 7620;
+    const pxToPd = (px) => {
+      const mm = (px / ppi) * 25.4;
+      const rad = mm / distMm;
+      return Math.tan(rad) * 100;
+    };
+
     // Smooth the data
     const raw = [...positionLog].filter(p => p.type === 'track').sort((a, b) => a.t - b.t);
     const smoothed = smoothPositionData(raw, 40);
@@ -1735,32 +1743,32 @@ function HorizontalTimelineGraph({ positionLog, phaseMarkers, startTime }) {
     const tEnd = smoothed[smoothed.length - 1].t;
     const tRange = Math.max(tEnd - t0, 1000);
 
-    // Use half-displacement for maxAbs since we split 50/50
-    let maxAbs = 10;
-    for (const p of smoothed) maxAbs = Math.max(maxAbs, Math.abs(p.x) / 2);
-    maxAbs = Math.ceil(maxAbs * 1.3);
+    // Convert to prism diopters, split 50/50 per eye
+    let maxPd = 1;
+    for (const p of smoothed) maxPd = Math.max(maxPd, Math.abs(pxToPd(p.x)) / 2);
+    maxPd = Math.ceil(maxPd * 1.3 * 10) / 10; // round to 0.1
 
-    // Time flows DOWN (Y axis), position along X axis
-    const toX = v => pad.left + plotW / 2 + (v / maxAbs) * (plotW / 2);
+    // Time flows DOWN (Y axis), prism along X axis
+    const toX = v => pad.left + plotW / 2 + (v / maxPd) * (plotW / 2);
     const toY = t => pad.top + ((t - t0) / tRange) * plotH;
 
-    // Grid lines
+    // Grid
     ctx.strokeStyle = 'rgba(43, 70, 128, 0.15)'; ctx.lineWidth = 1;
-    // Center line (zero = aligned)
     ctx.beginPath(); ctx.moveTo(toX(0), pad.top); ctx.lineTo(toX(0), h - pad.bottom); ctx.stroke();
 
-    // Labels at top
+    // Labels
     ctx.fillStyle = '#91aaeb'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText('Eso (nasal)', pad.left + plotW * 0.2, pad.top - 18);
-    ctx.fillText('Exo (temporal)', pad.left + plotW * 0.8, pad.top - 18);
+    ctx.fillText('← Eso (nasal)', pad.left + plotW * 0.2, pad.top - 18);
+    ctx.fillText('Exo (temporal) →', pad.left + plotW * 0.8, pad.top - 18);
     ctx.font = '11px sans-serif';
-    ctx.fillText('Horizontal Alignment — Both Eyes', pad.left + plotW / 2, pad.top - 6);
+    ctx.fillText('Horizontal Alignment — Prism Diopters', pad.left + plotW / 2, pad.top - 6);
 
-    // X axis position labels
+    // X axis prism labels
     ctx.fillStyle = '#91aaeb'; ctx.font = '9px monospace'; ctx.textAlign = 'center';
-    for (let v = -maxAbs; v <= maxAbs; v += Math.ceil(maxAbs / 3)) {
-      if (v === 0) continue;
-      ctx.fillText(`${v}px`, toX(v), pad.top - 22);
+    const pdStep = maxPd > 5 ? 2 : maxPd > 2 ? 1 : 0.5;
+    for (let v = -maxPd; v <= maxPd; v += pdStep) {
+      if (Math.abs(v) < 0.01) continue;
+      ctx.fillText(`${v.toFixed(1)}pd`, toX(v), pad.top - 22);
     }
 
     // Time labels on left (Y axis)
@@ -1794,21 +1802,21 @@ function HorizontalTimelineGraph({ positionLog, phaseMarkers, startTime }) {
       ctx.fillText(markers[i].label, w - pad.right + 4, my + 10);
     }
 
-    // Draw TWO traces: Right eye (red) at +displacement/2, Left eye (green) at -displacement/2
-    // Right eye trace (warm red)
+    // TWO traces in prism diopters: RE at +pd/2, LE at -pd/2
     ctx.strokeStyle = '#FF5252'; ctx.lineWidth = 2; ctx.globalAlpha = 0.85;
     ctx.beginPath();
     smoothed.forEach((p, i) => {
-      const px = toX(p.x / 2), py = toY(p.t);
+      const pd = pxToPd(p.x) / 2;
+      const px = toX(pd), py = toY(p.t);
       i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
     });
     ctx.stroke();
 
-    // Left eye trace (green)
     ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 2;
     ctx.beginPath();
     smoothed.forEach((p, i) => {
-      const px = toX(-p.x / 2), py = toY(p.t);
+      const pd = -pxToPd(p.x) / 2;
+      const px = toX(pd), py = toY(p.t);
       i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
     });
     ctx.stroke();
@@ -1830,7 +1838,7 @@ function HorizontalTimelineGraph({ positionLog, phaseMarkers, startTime }) {
  * Right hypo = target moves down = positive Y in data = plotted downward.
  * Smoothed.
  */
-function VerticalTimelineGraph({ positionLog, phaseMarkers, startTime }) {
+function VerticalTimelineGraph({ positionLog, phaseMarkers, startTime, config }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {
@@ -1852,6 +1860,15 @@ function VerticalTimelineGraph({ positionLog, phaseMarkers, startTime }) {
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, w, h);
 
+    // Pixel to prism diopter conversion
+    const ppi = config?.displayPPI || 96;
+    const distMm = config?.distanceOpticalDistanceMm || 7620;
+    const pxToPd = (px) => {
+      const mm = (px / ppi) * 25.4;
+      const rad = mm / distMm;
+      return Math.tan(rad) * 100;
+    };
+
     const raw = [...positionLog].filter(p => p.type === 'track').sort((a, b) => a.t - b.t);
     const smoothed = smoothPositionData(raw, 40);
     if (smoothed.length < 2) return;
@@ -1860,32 +1877,29 @@ function VerticalTimelineGraph({ positionLog, phaseMarkers, startTime }) {
     const tEnd = smoothed[smoothed.length - 1].t;
     const tRange = Math.max(tEnd - t0, 1000);
 
-    // Use half-displacement for maxAbs since we split 50/50
-    let maxAbs = 10;
-    for (const p of smoothed) maxAbs = Math.max(maxAbs, Math.abs(p.y) / 2);
-    maxAbs = Math.ceil(maxAbs * 1.3);
+    // Max in prism diopters, split 50/50
+    let maxPd = 1;
+    for (const p of smoothed) maxPd = Math.max(maxPd, Math.abs(pxToPd(p.y)) / 2);
+    maxPd = Math.ceil(maxPd * 1.3 * 10) / 10;
 
-    // Time along X, vertical position along Y
     const toX = t => pad.left + ((t - t0) / tRange) * plotW;
-    const toY = v => pad.top + plotH / 2 + (v / maxAbs) * (plotH / 2); // +v = down on graph
+    const toY = v => pad.top + plotH / 2 + (v / maxPd) * (plotH / 2);
 
-    // Grid: Zero line
     ctx.strokeStyle = 'rgba(43, 70, 128, 0.15)'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(pad.left, toY(0)); ctx.lineTo(w - pad.right, toY(0)); ctx.stroke();
 
-    // Labels
     ctx.fillStyle = '#91aaeb'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
-    ctx.fillText('Vertical Alignment — Both Eyes', pad.left, pad.top - 8);
-    ctx.fillStyle = '#91aaeb'; ctx.font = '10px sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText('Hyper', pad.left - 4, pad.top + 10);
-    ctx.fillText('Hypo', pad.left - 4, h - pad.bottom - 4);
+    ctx.fillText('Vertical Alignment — Prism Diopters', pad.left, pad.top - 8);
+    ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText('R Hyper ↑', pad.left - 4, pad.top + 10);
+    ctx.fillText('R Hypo ↓', pad.left - 4, h - pad.bottom - 4);
 
-    // Y axis labels
+    // Y axis prism labels
     ctx.font = '9px monospace';
-    for (let v = -maxAbs; v <= maxAbs; v += Math.ceil(maxAbs / 3)) {
-      if (v === 0) continue;
-      ctx.fillText(`${v}px`, pad.left - 8, toY(v) + 3);
+    const pdStep = maxPd > 5 ? 2 : maxPd > 2 ? 1 : 0.5;
+    for (let v = -maxPd; v <= maxPd; v += pdStep) {
+      if (Math.abs(v) < 0.01) continue;
+      ctx.fillText(`${v.toFixed(1)}pd`, pad.left - 8, toY(v) + 3);
     }
 
     // Time labels
@@ -1915,21 +1929,21 @@ function VerticalTimelineGraph({ positionLog, phaseMarkers, startTime }) {
       ctx.fillText(markers[i].label, (mx + nextX) / 2, pad.top - 2);
     }
 
-    // Draw TWO traces: Right eye (red) at +displacement/2, Left eye (green) at -displacement/2
-    // Right eye trace (warm red)
+    // TWO traces in prism diopters
     ctx.strokeStyle = '#FF5252'; ctx.lineWidth = 2; ctx.globalAlpha = 0.85;
     ctx.beginPath();
     smoothed.forEach((p, i) => {
-      const px = toX(p.t), py = toY(p.y / 2);
+      const pd = pxToPd(p.y) / 2;
+      const px = toX(p.t), py = toY(pd);
       i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
     });
     ctx.stroke();
 
-    // Left eye trace (green)
     ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 2;
     ctx.beginPath();
     smoothed.forEach((p, i) => {
-      const px = toX(p.t), py = toY(-p.y / 2);
+      const pd = -pxToPd(p.y) / 2;
+      const px = toX(p.t), py = toY(pd);
       i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
     });
     ctx.stroke();
