@@ -32,16 +32,16 @@ const LOCK_MODES = ['always', 'pulse', 'flash', 'off'];
 // Auto protocol: vertical arrows (horizontal FD) then horizontal arrows (vertical FD). No fixation lock.
 const AUTO_STEPS = [
   // Introduction — using vertical arrows for horizontal alignment
-  { id: 'welcome', dur: 5000, msg: 'Fixation Disparity Assessment', red: false, green: false, lock: false, move: false, preset: 'arrows-horiz' },
-  { id: 'intro-right', dur: 4000, msg: 'Your right eye sees this arrow', red: true, green: false, lock: false, move: false, preset: 'arrows-horiz' },
-  { id: 'intro-left', dur: 4000, msg: 'Your left eye sees this arrow', red: false, green: true, lock: false, move: false, preset: 'arrows-horiz' },
-  { id: 'intro-both', dur: 3000, msg: 'Both arrows together', red: true, green: true, lock: false, move: false, preset: 'arrows-horiz' },
-  { id: 'intro-move', dur: 15000, msg: 'Swipe your phone to move the arrow. Keep the tips touching.', red: true, green: true, lock: false, move: true, preset: 'arrows-horiz' },
-  { id: 'intro-blink', dur: 5000, msg: 'If you lose an arrow, blink. Test starting now.', red: true, green: true, lock: false, move: false, preset: 'arrows-horiz' },
+  { id: 'welcome', dur: 5000, msg: 'Fixation Disparity Assessment', red: false, green: false, lock: false, move: false },
+  { id: 'intro-right', dur: 4000, msg: 'Your right eye sees this target', red: true, green: false, lock: false, move: false },
+  { id: 'intro-left', dur: 4000, msg: 'Your left eye sees this target', red: false, green: true, lock: false, move: false },
+  { id: 'intro-both', dur: 3000, msg: 'Both targets together', red: true, green: true, lock: false, move: false },
+  { id: 'intro-move', dur: 15000, msg: 'Swipe your phone to put the cross inside the circle.', red: true, green: true, lock: false, move: true },
+  { id: 'intro-blink', dur: 5000, msg: 'If you lose a target, blink. Test starting now.', red: true, green: true, lock: false, move: false },
 
-  // === HORIZONTAL FD: Vertical arrows (patient aligns left/right) ===
-  { id: 'h-start', dur: 2000, msg: 'Keep the arrow tips together.', red: true, green: true, lock: false, move: true, reset: true, marker: 'H: Start', preset: 'arrows-horiz' },
-  { id: 'h-track', dur: 45000, msg: '', red: true, green: true, lock: false, move: true, record: true, preset: 'arrows-horiz' },
+  // === HORIZONTAL + VERTICAL FD: Ring and cross ===
+  { id: 'h-start', dur: 2000, msg: 'Keep targets aligned.', red: true, green: true, lock: false, move: true, reset: true, marker: 'H: Start' },
+  { id: 'h-track', dur: 45000, msg: '', red: true, green: true, lock: false, move: true, record: true },
 
   // === VERTICAL FD: Horizontal arrows (patient aligns up/down) ===
   { id: 'v-instruct', dur: 5000, msg: 'Now keep these arrow tips together.', red: true, green: true, lock: false, move: true, reset: true, marker: 'V: Start', preset: 'arrows-vert' },

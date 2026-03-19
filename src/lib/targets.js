@@ -14,14 +14,14 @@ export function drawRing(ctx, x, y, radius, color, strokeWidth = 3) {
   ctx.stroke();
 }
 
-/** Draw a cross (+) */
+/** Draw a cross (+) — size parameter = radius, matching drawRing */
 export function drawCross(ctx, x, y, size, color, strokeWidth = 3) {
-  const half = size / 2;
+  // size = radius (same as ring), so cross arms span the full diameter
   ctx.beginPath();
-  ctx.moveTo(x - half, y);
-  ctx.lineTo(x + half, y);
-  ctx.moveTo(x, y - half);
-  ctx.lineTo(x, y + half);
+  ctx.moveTo(x - size, y);
+  ctx.lineTo(x + size, y);
+  ctx.moveTo(x, y - size);
+  ctx.lineTo(x, y + size);
   ctx.strokeStyle = color;
   ctx.lineWidth = strokeWidth;
   ctx.lineCap = 'round';
