@@ -89,6 +89,7 @@ export default function Clinician() {
   const [showConfig, setShowConfig] = useState(false);
   const [showCalibration, setShowCalibration] = useState(false);
   const [showPairing, setShowPairing] = useState(true);
+  const [rightTab, setRightTab] = useState('live'); // 'live' | 'results'
 
   // Stable message handler ref — avoids TDZ issues with minified builds
   const peerMessageHandlerRef = useRef(null);
@@ -1251,8 +1252,26 @@ export default function Clinician() {
         )}
       </div>
 
-      {/* ===== RIGHT: Live Data & Results ===== */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', background: '#060e20' }}>
+      {/* ===== RIGHT: Tabbed Live / Results ===== */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#060e20' }}>
+        {/* Tab bar */}
+        <div style={{ display: 'flex', gap: 0, padding: '8px 14px 0', flexShrink: 0 }}>
+          {['live', 'results'].map(tab => (
+            <button key={tab} onClick={() => setRightTab(tab)}
+              style={{
+                flex: 1, padding: '8px', fontSize: '13px', fontWeight: 600,
+                borderRadius: '6px 6px 0 0',
+                background: rightTab === tab ? '#06122d' : 'transparent',
+                color: rightTab === tab ? 'var(--on-surface)' : 'var(--on-surface-dim)',
+                textTransform: 'capitalize', letterSpacing: '0.02em',
+              }}>
+              {tab === 'live' ? 'Live View' : 'Results & Analysis'}
+            </button>
+          ))}
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px' }}>
+        {/* === LIVE TAB === */}
+        {rightTab === 'live' && (<>
         {/* === LIVE PRISM READOUT === */}
         <div className="panel" style={{ background: '#031d4b' }}>
           <h3 style={{ color: 'var(--primary)', marginBottom: 10, letterSpacing: '-0.02em' }}>Live Position</h3>
@@ -1363,17 +1382,10 @@ export default function Clinician() {
           </div>
         )}
 
-        {/* ===== RESULTS & GRAPHS SECTION ===== */}
-        {(session.positionLog?.length > 0 || session.trials.length > 0 || session.prismSweepResults?.length >= 2) && (
-          <div style={{
-            marginTop: 16,
-            borderTop: '1px solid rgba(43, 70, 128, 0.25)',
-            paddingTop: 16,
-          }}>
-            <h2 style={{
-              fontSize: '16px', fontWeight: 700, letterSpacing: '-0.02em',
-              color: '#91aaeb', marginBottom: 12,
-            }}>Results & Analysis</h2>
+        </>)}
+
+        {/* === RESULTS TAB === */}
+        {rightTab === 'results' && (<>
 
             {/* Position Graph */}
             {(session.positionLog?.length > 0 || session.trials.length > 0) && (
@@ -1468,8 +1480,9 @@ export default function Clinician() {
                 </p>
               </div>
             )}
-          </div>
-        )}
+        </>)}
+
+      </div>
       </div>
     </div>
   );
