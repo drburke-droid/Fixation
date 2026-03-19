@@ -89,7 +89,7 @@ export default function Clinician() {
   const [showConfig, setShowConfig] = useState(false);
   const [showCalibration, setShowCalibration] = useState(false);
   const [showPairing, setShowPairing] = useState(true);
-  const [rightTab, setRightTab] = useState('live'); // 'live' | 'results'
+  const [rightTab, setRightTab] = useState('live'); // 'live' | 'results' | 'replay'
 
   // Stable message handler ref — avoids TDZ issues with minified builds
   const peerMessageHandlerRef = useRef(null);
@@ -1256,16 +1256,16 @@ export default function Clinician() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#060e20' }}>
         {/* Tab bar */}
         <div style={{ display: 'flex', gap: 0, padding: '8px 14px 0', flexShrink: 0 }}>
-          {['live', 'results'].map(tab => (
+          {[['live', 'Live View'], ['results', 'Results'], ['replay', 'Replay']].map(([tab, label]) => (
             <button key={tab} onClick={() => setRightTab(tab)}
               style={{
                 flex: 1, padding: '8px', fontSize: '13px', fontWeight: 600,
                 borderRadius: '6px 6px 0 0',
                 background: rightTab === tab ? '#06122d' : 'transparent',
                 color: rightTab === tab ? 'var(--on-surface)' : 'var(--on-surface-dim)',
-                textTransform: 'capitalize', letterSpacing: '0.02em',
+                letterSpacing: '0.02em',
               }}>
-              {tab === 'live' ? 'Live View' : 'Results & Analysis'}
+              {label}
             </button>
           ))}
         </div>
@@ -1481,6 +1481,11 @@ export default function Clinician() {
               </div>
             )}
         </>)}
+
+        {/* === REPLAY TAB === */}
+        {rightTab === 'replay' && (
+          <ReplayViewer positionLog={session.positionLog || []} phaseMarkers={session.autoProtocol?.phaseMarkers || []} startTime={session.autoProtocol?.startTime} config={session.config} />
+        )}
 
       </div>
       </div>
@@ -2200,6 +2205,206 @@ function HVScatterPlot({ trials }) {
 
   return <canvas ref={canvasRef}
     style={{ width: '100%', maxWidth: 600, borderRadius: '6px', border: '1px solid rgba(43, 70, 128, 0.15)' }} />;
+}
+
+/** Replay viewer — animates R and L letters based on recorded position data */
+function ReplayViewer({ positionLog, phaseMarkers, startTime, config }) {
+  const canvasRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [speed, setSpeed] = useState(1);
+  const animRef = useRef(null);
+  const startRef = useRef(null);
+
+  const trackPts = useMemo(() => {
+    const raw = (positionLog || []).filter(p => p.type === 'track').sort((a, b) => a.t - b.t);
+    return smoothPositionData(raw, 20); // lighter smoothing for replay
+  }, [positionLog]);
+
+  const duration = trackPts.length > 1 ? trackPts[trackPts.length - 1].t - trackPts[0].t : 0;
+  const t0 = trackPts.length > 0 ? trackPts[0].t : 0;
+
+  // Px to prism conversion
+  const ppi = config?.displayPPI || 96;
+  const distMm = config?.distanceOpticalDistanceMm || 7620;
+
+  const getPointAtTime = useCallback((elapsed) => {
+    if (trackPts.length < 2) return { x: 0, y: 0 };
+    const targetT = t0 + elapsed;
+    // Binary search for closest point
+    let lo = 0, hi = trackPts.length - 1;
+    while (lo < hi - 1) {
+      const mid = (lo + hi) >> 1;
+      if (trackPts[mid].t <= targetT) lo = mid; else hi = mid;
+    }
+    // Interpolate
+    const p0 = trackPts[lo], p1 = trackPts[hi];
+    const frac = p1.t !== p0.t ? (targetT - p0.t) / (p1.t - p0.t) : 0;
+    return {
+      x: p0.x + (p1.x - p0.x) * Math.max(0, Math.min(1, frac)),
+      y: p0.y + (p1.y - p0.y) * Math.max(0, Math.min(1, frac)),
+    };
+  }, [trackPts, t0]);
+
+  // Find current phase label
+  const getPhaseLabel = useCallback((elapsed) => {
+    const targetT = t0 + elapsed;
+    let label = '';
+    for (const m of phaseMarkers) {
+      if (m.t <= targetT) label = m.label;
+    }
+    return label;
+  }, [phaseMarkers, t0]);
+
+  const draw = useCallback((elapsed) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const logW = 800, logH = 500;
+    canvas.width = logW * dpr;
+    canvas.height = logH * dpr;
+    canvas.style.width = '100%';
+    canvas.style.height = 'auto';
+    ctx.scale(dpr, dpr);
+
+    const w = logW, h = logH;
+    const cx = w / 2, cy = h / 2;
+
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, w, h);
+
+    // Crosshair
+    ctx.strokeStyle = 'rgba(43, 70, 128, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx, 0); ctx.lineTo(cx, h);
+    ctx.moveTo(0, cy); ctx.lineTo(w, cy);
+    ctx.stroke();
+
+    const pt = getPointAtTime(elapsed);
+
+    // Scale displacement for visibility: 1px data = 2px on replay canvas
+    const scale = 2;
+    // Split 50/50 between eyes
+    const reX = cx + (pt.x / 2) * scale;
+    const reY = cy + (pt.y / 2) * scale;
+    const leX = cx - (pt.x / 2) * scale;
+    const leY = cy - (pt.y / 2) * scale;
+
+    // Right eye — "R" in red
+    ctx.font = 'bold 36px Manrope, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#FF5252';
+    ctx.fillText('R', reX, reY);
+
+    // Left eye — "L" in green
+    ctx.fillStyle = '#4CAF50';
+    ctx.fillText('L', leX, leY);
+
+    // Phase label
+    const phase = getPhaseLabel(elapsed);
+    if (phase) {
+      ctx.fillStyle = '#91aaeb';
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(phase, 10, 20);
+    }
+
+    // Time
+    ctx.fillStyle = '#91aaeb';
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(`${(elapsed / 1000).toFixed(1)}s / ${(duration / 1000).toFixed(1)}s`, w - 10, 20);
+
+    // Prism values
+    const mm = (pt.x / ppi) * 25.4;
+    const rad = mm / distMm;
+    const hPd = Math.tan(rad) * 100;
+    const mmV = (pt.y / ppi) * 25.4;
+    const radV = mmV / distMm;
+    const vPd = Math.tan(radV) * 100;
+    ctx.fillStyle = 'var(--on-surface-variant)';
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#91aaeb';
+    ctx.fillText(`H: ${Math.abs(hPd).toFixed(2)} pd ${hPd > 0.01 ? 'exo' : hPd < -0.01 ? 'eso' : ''}   V: ${Math.abs(vPd).toFixed(2)} pd`, cx, h - 12);
+  }, [getPointAtTime, getPhaseLabel, duration, ppi, distMm]);
+
+  // Animation loop
+  useEffect(() => {
+    if (!playing) return;
+    startRef.current = performance.now() - progress * duration;
+
+    const tick = () => {
+      const elapsed = (performance.now() - startRef.current) * speed;
+      const clamped = Math.min(elapsed, duration);
+      setProgress(duration > 0 ? clamped / duration : 0);
+      draw(clamped);
+      if (clamped < duration) {
+        animRef.current = requestAnimationFrame(tick);
+      } else {
+        setPlaying(false);
+      }
+    };
+    animRef.current = requestAnimationFrame(tick);
+    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
+  }, [playing, speed, duration, draw, progress]);
+
+  // Draw initial frame
+  useEffect(() => {
+    if (!playing) draw(progress * duration);
+  }, [progress, duration, draw, playing]);
+
+  if (trackPts.length < 10) {
+    return <div style={{ padding: 20, color: 'var(--on-surface-dim)', textAlign: 'center' }}>
+      No tracking data to replay. Run the auto protocol first.
+    </div>;
+  }
+
+  return (
+    <div style={{ padding: '8px' }}>
+      <canvas ref={canvasRef} style={{ width: '100%', borderRadius: '6px', border: '1px solid rgba(43,70,128,0.15)' }} />
+
+      {/* Controls */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10 }}>
+        <button onClick={() => {
+          if (progress >= 1) setProgress(0);
+          setPlaying(!playing);
+        }} style={{ padding: '8px 20px', fontSize: '13px', fontWeight: 600 }}>
+          {playing ? 'Pause' : progress >= 1 ? 'Replay' : 'Play'}
+        </button>
+        <button onClick={() => { setPlaying(false); setProgress(0); draw(0); }}
+          style={{ padding: '8px 14px', fontSize: '12px' }}>Reset</button>
+
+        {/* Speed control */}
+        <select value={speed} onChange={e => setSpeed(Number(e.target.value))}
+          style={{ fontSize: '12px', padding: '4px 8px' }}>
+          <option value={0.25}>0.25x</option>
+          <option value={0.5}>0.5x</option>
+          <option value={1}>1x</option>
+          <option value={2}>2x</option>
+          <option value={4}>4x</option>
+        </select>
+
+        {/* Scrub bar */}
+        <input type="range" min="0" max="1" step="0.001"
+          value={progress}
+          onChange={e => {
+            const p = Number(e.target.value);
+            setProgress(p);
+            setPlaying(false);
+            draw(p * duration);
+          }}
+          style={{ flex: 1 }} />
+
+        <span style={{ fontSize: '11px', color: 'var(--on-surface-dim)', fontFamily: 'monospace', minWidth: 45 }}>
+          {(progress * duration / 1000).toFixed(1)}s
+        </span>
+      </div>
+    </div>
+  );
 }
 
 const thStyle = { textAlign: 'left', padding: '6px 8px', color: 'var(--on-surface-dim)', fontWeight: 600, whiteSpace: 'nowrap', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.04em' };
