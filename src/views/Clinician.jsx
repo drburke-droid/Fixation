@@ -32,23 +32,21 @@ const LOCK_MODES = ['always', 'pulse', 'flash', 'off'];
 // Auto protocol: continuous fixation tracking + vertical alignment
 const AUTO_STEPS = [
   // Introduction
-  { id: 'welcome', dur: 5000, msg: 'Welcome to the\nFixation Disparity Assessment', red: false, green: false, lock: false, move: false },
-  { id: 'intro-left', dur: 4000, msg: 'Your left eye\nsees this target', red: true, green: false, lock: false, move: false },
-  { id: 'intro-right', dur: 4000, msg: 'Your right eye\nsees this target', red: false, green: true, lock: false, move: false },
-  { id: 'intro-lock', dur: 4000, msg: 'Both eyes see\nthis fixation target', red: false, green: false, lock: true, move: false },
-  { id: 'intro-both', dur: 4000, msg: 'Now you see\nall targets together', red: true, green: true, lock: true, move: false },
-  { id: 'intro-move', dur: 15000, msg: 'Drag your finger on your phone\nto move the target.\nTry putting the cross inside\nthe circle.\nTap phone screen when centred.', red: true, green: true, lock: true, move: true },
-  { id: 'intro-blink', dur: 6000, msg: 'If you lose a target try blinking.\nIf that doesn\'t work\nsay "I lost it".\nThe test will begin now.', red: true, green: true, lock: true, move: false },
+  { id: 'welcome', dur: 5000, msg: 'Fixation Disparity Assessment', red: false, green: false, lock: false, move: false },
+  { id: 'intro-left', dur: 4000, msg: 'Your left eye sees this target', red: true, green: false, lock: false, move: false },
+  { id: 'intro-right', dur: 4000, msg: 'Your right eye sees this target', red: false, green: true, lock: false, move: false },
+  { id: 'intro-lock', dur: 4000, msg: 'Both eyes see this target', red: false, green: false, lock: true, move: false },
+  { id: 'intro-both', dur: 3000, msg: 'All targets together', red: true, green: true, lock: true, move: false },
+  { id: 'intro-move', dur: 15000, msg: 'Swipe your phone to move the target. Put the cross inside the circle. Tap when centred.', red: true, green: true, lock: true, move: true },
+  { id: 'intro-blink', dur: 5000, msg: 'If you lose a target, blink. Test starting now.', red: true, green: true, lock: true, move: false },
 
-  // === HORIZONTAL FD: Continuous tracking with ring/cross ===
-  // Phase 1: With fixation lock (20s)
-  { id: 'h-lock-start', dur: 2000, msg: 'Keep the targets aligned.', red: true, green: true, lock: true, move: true, reset: true, marker: 'H: Lock On' },
+  // === HORIZONTAL FD ===
+  { id: 'h-lock-start', dur: 2000, msg: 'Keep targets aligned.', red: true, green: true, lock: true, move: true, reset: true, marker: 'H: Lock On' },
   { id: 'h-lock', dur: 20000, msg: '', red: true, green: true, lock: true, move: true, record: true },
-  // Phase 2: Lock disappears immediately — no warning
   { id: 'h-nolock', dur: 30000, msg: '', red: true, green: true, lock: false, move: true, record: true, marker: 'H: Dissociated' },
 
   // === VERTICAL FD: Opposing arrows ===
-  { id: 'v-instruct', dur: 5000, msg: 'Now align these arrows.\nMove the arrow up or down\nto match the other.', red: true, green: true, lock: false, move: true, reset: true, marker: 'V: Instructions', preset: 'arrows-vert' },
+  { id: 'v-instruct', dur: 5000, msg: 'Align the arrows up and down.', red: true, green: true, lock: false, move: true, reset: true, marker: 'V: Instructions', preset: 'arrows-vert' },
   { id: 'v-track', dur: 30000, msg: '', red: true, green: true, lock: false, move: true, record: true, marker: 'V: Tracking', preset: 'arrows-vert' },
 
   // Complete
@@ -326,9 +324,9 @@ export default function Clinician() {
       stepIndex: stepIdx,
       stepId: step.id,
       message: step.msg || '',
-      showRed: step.red !== false,
-      showGreen: step.green !== false,
-      showLock: step.lock !== false,
+      showRed: step.red === true,
+      showGreen: step.green === true,
+      showLock: step.lock === true,
       allowMove: step.move === true,
     };
     const next = { ...s, autoProtocol: ap };

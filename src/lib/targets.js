@@ -295,9 +295,10 @@ export function renderTargets(ctx, state, centerX, centerY, options = {}) {
 
   // Draw fixation lock in upper 1/3 of screen
   const lockY = canvasHeight > 0 ? canvasHeight / 3 : centerY;
-  if (showFixation) {
+  // showFixation=false means NO LOCK, period. Overrides lockMode.
+  if (showFixation === true) {
     const lockMode = config.fixationLockMode;
-    if (lockMode === 'always' || lockMode === 'pulse' || (lockMode === 'flash' && flashActive)) {
+    if (lockMode !== 'off') {
       const alpha = lockMode === 'pulse' ? 0.5 + 0.5 * Math.sin(Date.now() / 500) : 1;
       const lockColor = `rgba(255, 255, 255, ${alpha})`;
       drawFixationLock(ctx, centerX, lockY, lockSize, lockColor, 4 * scale);

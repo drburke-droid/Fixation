@@ -32,34 +32,32 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
     const phase = state.phase;
     const ap = state.autoProtocol;
 
-    // Auto protocol: override target visibility regardless of phase
+    // Auto protocol: FULL override — controls ALL rendering, never falls through
     if (ap?.active) {
-      const apShowRed = ap.showRed !== false;
-      const apShowGreen = ap.showGreen !== false;
-      const apShowLock = ap.showLock !== false;
+      const apShowRed = ap.showRed === true;
+      const apShowGreen = ap.showGreen === true;
+      const apShowLock = ap.showLock === true;
 
-      if (apShowRed || apShowGreen || apShowLock) {
-        renderTargets(ctx, state, centerX, centerY, {
-          showFixation: apShowLock,
-          showRed: apShowRed,
-          showGreen: apShowGreen,
-          displayType,
-          canvasHeight: h, canvasWidth: w,
-        });
-      }
+      renderTargets(ctx, state, centerX, centerY, {
+        showFixation: apShowLock,
+        showRed: apShowRed,
+        showGreen: apShowGreen,
+        displayType,
+        canvasHeight: h, canvasWidth: w,
+      });
 
-      // Draw instruction text if present — sized for 25ft mirror viewing
+      // Draw instruction text — wide container, above targets
       if (ap.message) {
-        const fontSize = Math.min(h * 0.05, w / 18);
-        ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
-        ctx.fillStyle = 'rgba(255,255,255,0.92)';
+        const fontSize = Math.min(h * 0.035, w / 28);
+        ctx.font = `500 ${fontSize}px -apple-system, sans-serif`;
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        const maxW = w * 0.45;
+        const maxW = w * 0.7;
 
-        // Split into lines, then word-wrap each
         const allLines = [];
         for (const rawLine of ap.message.split('\n')) {
+          if (!rawLine.trim()) continue;
           const words = rawLine.split(' ');
           let cur = '';
           for (const word of words) {
@@ -74,9 +72,8 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
           if (cur) allLines.push(cur);
         }
 
-        const lineH = fontSize * 1.35;
-        const blockH = allLines.length * lineH;
-        const startY = h * 0.62 - blockH / 2;
+        const lineH = fontSize * 1.5;
+        const startY = h * 0.45;
         allLines.forEach((line, i) => {
           ctx.fillText(line, centerX, startY + i * lineH);
         });
