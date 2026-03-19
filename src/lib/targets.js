@@ -73,6 +73,54 @@ export function drawHorizontalLine(ctx, x, y, size, color, strokeWidth = 3) {
   ctx.stroke();
 }
 
+/** Draw downward-pointing arrow (long tail, prominent head) */
+export function drawArrowDown(ctx, x, y, size, color, strokeWidth = 3) {
+  const tailLen = size * 1.8;
+  const headLen = size * 0.6;
+  const headW = size * 0.5;
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = strokeWidth;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  // Tail
+  ctx.beginPath();
+  ctx.moveTo(x, y - tailLen);
+  ctx.lineTo(x, y + headLen * 0.3);
+  ctx.stroke();
+  // Arrowhead
+  ctx.beginPath();
+  ctx.moveTo(x, y + headLen);
+  ctx.lineTo(x - headW, y - headLen * 0.2);
+  ctx.lineTo(x + headW, y - headLen * 0.2);
+  ctx.closePath();
+  ctx.fill();
+}
+
+/** Draw upward-pointing arrow (long tail, prominent head) */
+export function drawArrowUp(ctx, x, y, size, color, strokeWidth = 3) {
+  const tailLen = size * 1.8;
+  const headLen = size * 0.6;
+  const headW = size * 0.5;
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = strokeWidth;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  // Tail
+  ctx.beginPath();
+  ctx.moveTo(x, y + tailLen);
+  ctx.lineTo(x, y - headLen * 0.3);
+  ctx.stroke();
+  // Arrowhead
+  ctx.beginPath();
+  ctx.moveTo(x, y - headLen);
+  ctx.lineTo(x - headW, y + headLen * 0.2);
+  ctx.lineTo(x + headW, y + headLen * 0.2);
+  ctx.closePath();
+  ctx.fill();
+}
+
 /** Draw fixation lock — bold cross with gap and center dot */
 export function drawFixationLock(ctx, x, y, size, color = '#FFFFFF', strokeWidth = 3) {
   const armLen = size / 2;
@@ -168,11 +216,11 @@ export const targetPresets = {
     drawTarget1: drawVerticalLine,
     drawTarget2: drawHorizontalLine,
   },
-  'horiz-horiz': {
-    name: 'Two Horizontal Lines (Vertical align)',
-    description: 'Two horizontal lines — vertical alignment only',
-    drawTarget1: drawHorizontalLine,
-    drawTarget2: drawHorizontalLine,
+  'arrows-vert': {
+    name: 'Opposing Arrows (Vertical align)',
+    description: 'Arrow pointing down + arrow pointing up — vertical alignment only',
+    drawTarget1: drawArrowDown,
+    drawTarget2: drawArrowUp,
   },
   'paragraph': {
     name: 'Alternating Word Paragraph',

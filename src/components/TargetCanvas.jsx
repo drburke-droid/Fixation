@@ -32,9 +32,8 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
     const phase = state.phase;
     const ap = state.autoProtocol;
 
-    // Auto protocol display: show message + selective targets
-    if (ap?.active && ap.message) {
-      // Render targets based on auto protocol visibility flags
+    // Auto protocol: override target visibility regardless of phase
+    if (ap?.active) {
       const apShowRed = ap.showRed !== false;
       const apShowGreen = ap.showGreen !== false;
       const apShowLock = ap.showLock !== false;
@@ -49,35 +48,39 @@ export default function TargetCanvas({ state, flashActive = false, transitionPro
         });
       }
 
-      // Draw instruction text — large for 25ft mirror viewing, middle third of screen
-      ctx.fillStyle = 'rgba(255,255,255,0.95)';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const lines = ap.message.split('\n');
-      const fontSize = Math.min(h * 0.07, w / 12); // Large — scales with screen
-      ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
-      const maxTextWidth = w / 3; // Middle third
-      const textY = h * 0.65;
-      lines.forEach((line, i) => {
-        // Word wrap within middle third
-        const words = line.split(' ');
-        let wrappedLines = [];
-        let currentLine = '';
-        for (const word of words) {
-          const test = currentLine ? `${currentLine} ${word}` : word;
-          if (ctx.measureText(test).width > maxTextWidth && currentLine) {
-            wrappedLines.push(currentLine);
-            currentLine = word;
-          } else {
-            currentLine = test;
+      // Draw instruction text if present — sized for 25ft mirror viewing
+      if (ap.message) {
+        const fontSize = Math.min(h * 0.05, w / 18);
+        ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
+        ctx.fillStyle = 'rgba(255,255,255,0.92)';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        const maxW = w * 0.45;
+
+        // Split into lines, then word-wrap each
+        const allLines = [];
+        for (const rawLine of ap.message.split('\n')) {
+          const words = rawLine.split(' ');
+          let cur = '';
+          for (const word of words) {
+            const test = cur ? `${cur} ${word}` : word;
+            if (ctx.measureText(test).width > maxW && cur) {
+              allLines.push(cur);
+              cur = word;
+            } else {
+              cur = test;
+            }
           }
+          if (cur) allLines.push(cur);
         }
-        if (currentLine) wrappedLines.push(currentLine);
-        wrappedLines.forEach((wl, j) => {
-          const yPos = textY + (i * wrappedLines.length + j - (lines.length * wrappedLines.length - 1) / 2) * (fontSize * 1.4);
-          ctx.fillText(wl, centerX, yPos);
+
+        const lineH = fontSize * 1.35;
+        const blockH = allLines.length * lineH;
+        const startY = h * 0.62 - blockH / 2;
+        allLines.forEach((line, i) => {
+          ctx.fillText(line, centerX, startY + i * lineH);
         });
-      });
+      }
 
       animRef.current = requestAnimationFrame(draw);
       return;

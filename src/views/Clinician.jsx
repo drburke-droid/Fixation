@@ -37,22 +37,19 @@ const AUTO_STEPS = [
   { id: 'intro-right', dur: 4000, msg: 'Your right eye\nsees this target', red: false, green: true, lock: false, move: false },
   { id: 'intro-lock', dur: 4000, msg: 'Both eyes see\nthis fixation target', red: false, green: false, lock: true, move: false },
   { id: 'intro-both', dur: 4000, msg: 'Now you see\nall targets together', red: true, green: true, lock: true, move: false },
-  { id: 'intro-move', dur: 15000, msg: 'Drag your finger\non your phone to\nmove the target.\nTry putting the cross\ninside the circle.', red: true, green: true, lock: true, move: true },
-  { id: 'intro-blink', dur: 6000, msg: 'If you lose a target\ntry blinking.\nIf that doesn\'t work\nsay "I lost it".\n\nThe test will begin now.', red: true, green: true, lock: true, move: false },
+  { id: 'intro-move', dur: 15000, msg: 'Drag your finger on your phone\nto move the target.\nTry putting the cross inside\nthe circle.\nTap phone screen when centred.', red: true, green: true, lock: true, move: true },
+  { id: 'intro-blink', dur: 6000, msg: 'If you lose a target try blinking.\nIf that doesn\'t work\nsay "I lost it".\nThe test will begin now.', red: true, green: true, lock: true, move: false },
 
   // === HORIZONTAL FD: Continuous tracking with ring/cross ===
   // Phase 1: With fixation lock (20s)
-  { id: 'h-lock-start', dur: 2000, msg: 'Keep the targets\naligned.', red: true, green: true, lock: true, move: true, reset: true, marker: 'H: Lock On' },
+  { id: 'h-lock-start', dur: 2000, msg: 'Keep the targets aligned.', red: true, green: true, lock: true, move: true, reset: true, marker: 'H: Lock On' },
   { id: 'h-lock', dur: 20000, msg: '', red: true, green: true, lock: true, move: true, record: true },
-  // Phase 2: Lock fades — transition message
-  { id: 'h-fade', dur: 3000, msg: 'The fixation target\nwill now disappear.\nKeep the targets aligned.', red: true, green: true, lock: true, move: true, record: true, marker: 'H: Lock Fading' },
-  // Phase 3: No lock — dissociated (25s)
-  { id: 'h-nolock', dur: 25000, msg: '', red: true, green: true, lock: false, move: true, record: true, marker: 'H: Dissociated' },
+  // Phase 2: Lock disappears immediately — no warning
+  { id: 'h-nolock', dur: 30000, msg: '', red: true, green: true, lock: false, move: true, record: true, marker: 'H: Dissociated' },
 
-  // === VERTICAL FD: Two horizontal lines ===
-  { id: 'v-instruct', dur: 5000, msg: 'Now align these\nhorizontal lines.\nMove the line up or\ndown to match.', red: true, green: true, lock: false, move: true, reset: true, marker: 'V: Instructions', preset: 'horiz-horiz' },
-  // Vertical tracking (30s, no lock)
-  { id: 'v-track', dur: 30000, msg: '', red: true, green: true, lock: false, move: true, record: true, marker: 'V: Tracking', preset: 'horiz-horiz' },
+  // === VERTICAL FD: Opposing arrows ===
+  { id: 'v-instruct', dur: 5000, msg: 'Now align these arrows.\nMove the arrow up or down\nto match the other.', red: true, green: true, lock: false, move: true, reset: true, marker: 'V: Instructions', preset: 'arrows-vert' },
+  { id: 'v-track', dur: 30000, msg: '', red: true, green: true, lock: false, move: true, record: true, marker: 'V: Tracking', preset: 'arrows-vert' },
 
   // Complete
   { id: 'complete', dur: 0, msg: 'Test complete.\nThank you.', red: false, green: false, lock: false, move: false, marker: 'Complete' },
@@ -1078,7 +1075,7 @@ export default function Clinician() {
                     <option value="cross-ring">Cross & Ring</option>
                     <option value="triangle-square">House</option>
                     <option value="vert-horiz">Plus Lines</option>
-                    <option value="horiz-horiz">Horiz Lines (V only)</option>
+                    <option value="arrows-vert">Arrows (V only)</option>
                     <option value="paragraph">Paragraph</option>
                   </select>
                 </div>
@@ -1497,7 +1494,7 @@ function ClinicianPreview({ session }) {
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, w, h);
       renderTargets(ctx, session, w / 2, h / 2, {
-        showFixation: true, showRed: true, showGreen: true, scale: 0.1,
+        showFixation: true, showRed: true, showGreen: true, scale: 0.25,
         canvasHeight: h, canvasWidth: w,
       });
       animRef.current = requestAnimationFrame(draw);
@@ -1506,7 +1503,7 @@ function ClinicianPreview({ session }) {
     return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
   }, [session]);
 
-  return <canvas ref={canvasRef} width={300} height={180}
+  return <canvas ref={canvasRef} width={960} height={540}
     style={{ borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)', display: 'block', width: '100%', boxShadow: 'inset 0 1px 4px rgba(0,0,0,0.3)' }} />;
 }
 
