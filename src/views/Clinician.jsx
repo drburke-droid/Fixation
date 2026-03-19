@@ -1364,97 +1364,111 @@ export default function Clinician() {
           </div>
         )}
 
-        {/* Position Graph */}
-        {(session.positionLog?.length > 0 || session.trials.length > 0) && (
-          <div className="panel">
-            <h3>Position Over Time</h3>
-            <PositionGraph positionLog={session.positionLog || []} trials={session.trials} config={session.config} targets={session.targets} />
-          </div>
-        )}
+        {/* ===== RESULTS & GRAPHS SECTION ===== */}
+        {(session.positionLog?.length > 0 || session.trials.length > 0 || session.prismSweepResults?.length >= 2) && (
+          <div style={{
+            marginTop: 16,
+            borderTop: '1px solid rgba(43, 70, 128, 0.25)',
+            paddingTop: 16,
+          }}>
+            <h2 style={{
+              fontSize: '16px', fontWeight: 700, letterSpacing: '-0.02em',
+              color: '#91aaeb', marginBottom: 12,
+            }}>Results & Analysis</h2>
 
-        {/* Horizontal alignment graph — vertical orientation, time flows down */}
-        {session.autoProtocol?.phaseMarkers?.length > 0 && session.positionLog?.length > 10 && (
-          <div className="panel">
-            <h3>Horizontal Alignment</h3>
-            <HorizontalTimelineGraph positionLog={session.positionLog || []} phaseMarkers={session.autoProtocol.phaseMarkers} startTime={session.autoProtocol.startTime} />
-          </div>
-        )}
+            {/* Position Graph */}
+            {(session.positionLog?.length > 0 || session.trials.length > 0) && (
+              <div className="panel">
+                <h3>Position Over Time</h3>
+                <PositionGraph positionLog={session.positionLog || []} trials={session.trials} config={session.config} targets={session.targets} />
+              </div>
+            )}
 
-        {/* Vertical alignment graph — horizontal orientation */}
-        {session.autoProtocol?.phaseMarkers?.length > 0 && session.positionLog?.length > 10 && (
-          <div className="panel">
-            <h3>Vertical Alignment</h3>
-            <VerticalTimelineGraph positionLog={session.positionLog || []} phaseMarkers={session.autoProtocol.phaseMarkers} startTime={session.autoProtocol.startTime} />
-          </div>
-        )}
+            {/* Horizontal alignment graph — vertical orientation, time flows down */}
+            {session.autoProtocol?.phaseMarkers?.length > 0 && session.positionLog?.length > 10 && (
+              <div className="panel">
+                <h3>Horizontal Alignment</h3>
+                <HorizontalTimelineGraph positionLog={session.positionLog || []} phaseMarkers={session.autoProtocol.phaseMarkers} startTime={session.autoProtocol.startTime} />
+              </div>
+            )}
 
-        {/* Phase Analysis — extracted from continuous signal */}
-        {session.autoProtocol?.phaseMarkers?.length > 0 && session.positionLog?.length > 10 && (
-          <div className="panel">
-            <h3>Phase Analysis (from continuous signal)</h3>
-            <PhaseMetricsTable positionLog={session.positionLog} phaseMarkers={session.autoProtocol.phaseMarkers} config={session.config} />
-          </div>
-        )}
+            {/* Vertical alignment graph — horizontal orientation */}
+            {session.autoProtocol?.phaseMarkers?.length > 0 && session.positionLog?.length > 10 && (
+              <div className="panel">
+                <h3>Vertical Alignment</h3>
+                <VerticalTimelineGraph positionLog={session.positionLog || []} phaseMarkers={session.autoProtocol.phaseMarkers} startTime={session.autoProtocol.startTime} />
+              </div>
+            )}
 
-        {/* FD Curve (Prism Sweep) */}
-        {session.prismSweepResults?.length >= 2 && (
-          <div className="panel">
-            <h3>Forced Vergence FD Curve</h3>
-            <FDCurveGraph sweepResults={session.prismSweepResults} />
-          </div>
-        )}
+            {/* Phase Analysis — extracted from continuous signal */}
+            {session.autoProtocol?.phaseMarkers?.length > 0 && session.positionLog?.length > 10 && (
+              <div className="panel">
+                <h3>Phase Analysis (from continuous signal)</h3>
+                <PhaseMetricsTable positionLog={session.positionLog} phaseMarkers={session.autoProtocol.phaseMarkers} config={session.config} />
+              </div>
+            )}
 
-        {/* Tracking Analysis */}
-        {session.positionLog?.filter(p => p.type === 'track').length > 10 && (
-          <div className="panel">
-            <h3>Tracking Analysis</h3>
-            <TrackingAnalysisPanel trackPoints={session.positionLog.filter(p => p.type === 'track')} />
-          </div>
-        )}
+            {/* FD Curve (Prism Sweep) */}
+            {session.prismSweepResults?.length >= 2 && (
+              <div className="panel">
+                <h3>Forced Vergence FD Curve</h3>
+                <FDCurveGraph sweepResults={session.prismSweepResults} />
+              </div>
+            )}
 
-        {/* Recovery Dynamics */}
-        {session.positionLog?.filter(p => p.type === 'recovery').length > 5 && (
-          <div className="panel">
-            <h3>Recovery Dynamics</h3>
-            <RecoveryDynamicsGraph recoveryPoints={session.positionLog.filter(p => p.type === 'recovery')} />
-          </div>
-        )}
+            {/* Tracking Analysis */}
+            {session.positionLog?.filter(p => p.type === 'track').length > 10 && (
+              <div className="panel">
+                <h3>Tracking Analysis</h3>
+                <TrackingAnalysisPanel trackPoints={session.positionLog.filter(p => p.type === 'track')} />
+              </div>
+            )}
 
-        {/* H-V Scatter Plot */}
-        {session.trials.length >= 2 && (
-          <div className="panel">
-            <h3>H-V Scatter</h3>
-            <HVScatterPlot trials={session.trials} />
-          </div>
-        )}
+            {/* Recovery Dynamics */}
+            {session.positionLog?.filter(p => p.type === 'recovery').length > 5 && (
+              <div className="panel">
+                <h3>Recovery Dynamics</h3>
+                <RecoveryDynamicsGraph recoveryPoints={session.positionLog.filter(p => p.type === 'recovery')} />
+              </div>
+            )}
 
-        {/* Statistics */}
-        {(distStats || nearStats) && (
-          <div className="panel">
-            <h3>Statistics</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              {distStats && <StatsBlock title="Distance" stats={distStats} />}
-              {nearStats && <StatsBlock title="Near" stats={nearStats} />}
-            </div>
-          </div>
-        )}
+            {/* H-V Scatter Plot */}
+            {session.trials.length >= 2 && (
+              <div className="panel">
+                <h3>H-V Scatter</h3>
+                <HVScatterPlot trials={session.trials} />
+              </div>
+            )}
 
-        {/* EMR Summary */}
-        {(currentPhase === 'results' || session.trials.length > 0) && (
-          <div className="panel">
-            <h3>EMR Summary</h3>
-            <button onClick={handleGenerateSummary} style={{ marginBottom: 6, fontSize: '11px' }}>
-              Generate</button>
-            <textarea value={summaryText} onChange={e => setSummaryText(e.target.value)}
-              rows={6} style={{ width: '100%', fontFamily: "'SF Mono', 'Fira Code', monospace", fontSize: '11px', resize: 'vertical', borderRadius: '6px', lineHeight: 1.6 }}
-              placeholder="Click Generate or type..." />
-            <div style={{ marginTop: 6 }}>
-              <button className="primary" onClick={handleCopyToClipboard} style={{ fontSize: '12px' }}>
-                {copySuccess ? 'Copied!' : 'Copy to Clipboard'}</button>
-            </div>
-            <p style={{ fontSize: '9px', color: 'var(--on-surface-dim)', marginTop: 4 }}>
-              Prism values are estimates from subjective alignment, not objective recording.
-            </p>
+            {/* Statistics */}
+            {(distStats || nearStats) && (
+              <div className="panel">
+                <h3>Statistics</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  {distStats && <StatsBlock title="Distance" stats={distStats} />}
+                  {nearStats && <StatsBlock title="Near" stats={nearStats} />}
+                </div>
+              </div>
+            )}
+
+            {/* EMR Summary */}
+            {(currentPhase === 'results' || session.trials.length > 0) && (
+              <div className="panel">
+                <h3>EMR Summary</h3>
+                <button onClick={handleGenerateSummary} style={{ marginBottom: 6, fontSize: '11px' }}>
+                  Generate</button>
+                <textarea value={summaryText} onChange={e => setSummaryText(e.target.value)}
+                  rows={6} style={{ width: '100%', fontFamily: "'SF Mono', 'Fira Code', monospace", fontSize: '11px', resize: 'vertical', borderRadius: '6px', lineHeight: 1.6 }}
+                  placeholder="Click Generate or type..." />
+                <div style={{ marginTop: 6 }}>
+                  <button className="primary" onClick={handleCopyToClipboard} style={{ fontSize: '12px' }}>
+                    {copySuccess ? 'Copied!' : 'Copy to Clipboard'}</button>
+                </div>
+                <p style={{ fontSize: '9px', color: 'var(--on-surface-dim)', marginTop: 4 }}>
+                  Prism values are estimates from subjective alignment, not objective recording.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1511,12 +1525,19 @@ function PositionGraph({ positionLog, trials, config, targets }) {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    const w = canvas.width, h = canvas.height;
+    const dpr = window.devicePixelRatio || 1;
+    const logW = 1200, logH = 300;
+    canvas.width = logW * dpr;
+    canvas.height = logH * dpr;
+    canvas.style.width = '100%';
+    canvas.style.height = 'auto';
+    ctx.scale(dpr, dpr);
+    const w = logW, h = logH;
     const pad = { top: 20, right: 20, bottom: 30, left: 50 };
     const plotW = w - pad.left - pad.right;
     const plotH = h - pad.top - pad.bottom;
 
-    ctx.fillStyle = '#0d1117';
+    ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, w, h);
 
     // Combine all data points
@@ -1544,7 +1565,7 @@ function PositionGraph({ positionLog, trials, config, targets }) {
     const toY = (v) => pad.top + plotH / 2 - (v / maxAbs) * (plotH / 2);
 
     // Grid
-    ctx.strokeStyle = '#21262d';
+    ctx.strokeStyle = 'rgba(43, 70, 128, 0.15)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(pad.left, toY(0));
@@ -1552,7 +1573,7 @@ function PositionGraph({ positionLog, trials, config, targets }) {
     ctx.stroke();
 
     // Y axis labels
-    ctx.fillStyle = '#484f58';
+    ctx.fillStyle = '#91aaeb';
     ctx.font = '10px monospace';
     ctx.textAlign = 'right';
     ctx.fillText(`+${maxAbs}px`, pad.left - 4, pad.top + 4);
@@ -1624,12 +1645,12 @@ function PositionGraph({ positionLog, trials, config, targets }) {
     ctx.font = '10px sans-serif';
     ctx.textAlign = 'left';
     ctx.fillStyle = '#42a5f5';
-    ctx.fillText('— H (px)', w - 100, 14);
+    ctx.fillText('-- H (px)', w - 100, 14);
     ctx.fillStyle = '#ffa726';
-    ctx.fillText('— V (px)', w - 50, 14);
+    ctx.fillText('-- V (px)', w - 50, 14);
   }, [positionLog, trials, config, targets]);
 
-  return <canvas ref={canvasRef} width={600} height={200}
+  return <canvas ref={canvasRef}
     style={{ width: '100%', borderRadius: '6px', border: '1px solid rgba(43, 70, 128, 0.15)' }} />;
 }
 
@@ -1690,46 +1711,53 @@ function HorizontalTimelineGraph({ positionLog, phaseMarkers, startTime }) {
     const canvas = canvasRef.current;
     if (!canvas || !positionLog?.length) return;
     const ctx = canvas.getContext('2d');
-    const w = canvas.width, h = canvas.height;
+    const dpr = window.devicePixelRatio || 1;
+    const logW = 1200, logH = 800;
+    canvas.width = logW * dpr;
+    canvas.height = logH * dpr;
+    canvas.style.width = '100%';
+    canvas.style.height = 'auto';
+    ctx.scale(dpr, dpr);
+    const w = logW, h = logH;
     const pad = { left: 60, right: 20, top: 35, bottom: 30 };
     const plotW = w - pad.left - pad.right;
     const plotH = h - pad.top - pad.bottom;
 
-    ctx.fillStyle = '#0a0a0f';
+    ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, w, h);
 
     // Smooth the data
     const raw = [...positionLog].filter(p => p.type === 'track').sort((a, b) => a.t - b.t);
-    const smoothed = smoothPositionData(raw, 7);
+    const smoothed = smoothPositionData(raw, 40);
     if (smoothed.length < 2) return;
 
     const t0 = startTime || smoothed[0].t;
     const tEnd = smoothed[smoothed.length - 1].t;
     const tRange = Math.max(tEnd - t0, 1000);
 
+    // Use half-displacement for maxAbs since we split 50/50
     let maxAbs = 10;
-    for (const p of smoothed) maxAbs = Math.max(maxAbs, Math.abs(p.x));
+    for (const p of smoothed) maxAbs = Math.max(maxAbs, Math.abs(p.x) / 2);
     maxAbs = Math.ceil(maxAbs * 1.3);
 
     // Time flows DOWN (Y axis), position along X axis
-    // +X (right) = exo (right eye moves right from patient perspective)
-    // -X (left) = eso (right eye crosses to left)
     const toX = v => pad.left + plotW / 2 + (v / maxAbs) * (plotW / 2);
     const toY = t => pad.top + ((t - t0) / tRange) * plotH;
 
+    // Grid lines
+    ctx.strokeStyle = 'rgba(43, 70, 128, 0.15)'; ctx.lineWidth = 1;
     // Center line (zero = aligned)
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(toX(0), pad.top); ctx.lineTo(toX(0), h - pad.bottom); ctx.stroke();
 
     // Labels at top
-    ctx.fillStyle = '#555b6e'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText('← Eso', pad.left + plotW * 0.2, pad.top - 18);
-    ctx.fillText('Exo →', pad.left + plotW * 0.8, pad.top - 18);
-    ctx.fillStyle = '#42a5f5'; ctx.font = '11px sans-serif';
-    ctx.fillText('Right Eye — Horizontal Position', pad.left + plotW / 2, pad.top - 6);
+    ctx.fillStyle = '#91aaeb'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Eso (nasal)', pad.left + plotW * 0.2, pad.top - 18);
+    ctx.fillText('Exo (temporal)', pad.left + plotW * 0.8, pad.top - 18);
+    ctx.font = '11px sans-serif';
+    ctx.fillText('Horizontal Alignment — Both Eyes', pad.left + plotW / 2, pad.top - 6);
 
     // X axis position labels
-    ctx.fillStyle = '#555b6e'; ctx.font = '9px monospace'; ctx.textAlign = 'center';
+    ctx.fillStyle = '#91aaeb'; ctx.font = '9px monospace'; ctx.textAlign = 'center';
     for (let v = -maxAbs; v <= maxAbs; v += Math.ceil(maxAbs / 3)) {
       if (v === 0) continue;
       ctx.fillText(`${v}px`, toX(v), pad.top - 22);
@@ -1741,8 +1769,9 @@ function HorizontalTimelineGraph({ positionLog, phaseMarkers, startTime }) {
     const tickInt = totalS > 120 ? 30 : totalS > 60 ? 10 : totalS > 20 ? 5 : 2;
     for (let s = 0; s <= totalS; s += tickInt) {
       const ty = toY(t0 + s * 1000);
+      ctx.fillStyle = '#91aaeb';
       ctx.fillText(`${s}s`, pad.left - 8, ty + 3);
-      ctx.strokeStyle = 'rgba(255,255,255,0.04)'; ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(43, 70, 128, 0.15)'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(pad.left, ty); ctx.lineTo(w - pad.right, ty); ctx.stroke();
     }
 
@@ -1754,29 +1783,44 @@ function HorizontalTimelineGraph({ positionLog, phaseMarkers, startTime }) {
       const nextY = i + 1 < markers.length ? toY(markers[i + 1].t) : h - pad.bottom;
 
       if (i % 2 === 0) {
-        ctx.fillStyle = 'rgba(107,170,255,0.03)';
+        ctx.fillStyle = 'rgba(173, 198, 255, 0.06)';
         ctx.fillRect(pad.left, my, plotW, nextY - my);
       }
-      ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(43, 70, 128, 0.15)'; ctx.lineWidth = 1;
       ctx.setLineDash([3, 3]);
       ctx.beginPath(); ctx.moveTo(pad.left, my); ctx.lineTo(w - pad.right, my); ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillStyle = '#91aaeb';
       ctx.fillText(markers[i].label, w - pad.right + 4, my + 10);
     }
 
-    // Draw the smoothed trace
-    ctx.strokeStyle = '#42a5f5'; ctx.lineWidth = 2; ctx.globalAlpha = 0.85;
+    // Draw TWO traces: Right eye (red) at +displacement/2, Left eye (green) at -displacement/2
+    // Right eye trace (warm red)
+    ctx.strokeStyle = '#FF5252'; ctx.lineWidth = 2; ctx.globalAlpha = 0.85;
     ctx.beginPath();
     smoothed.forEach((p, i) => {
-      const px = toX(p.x), py = toY(p.t);
+      const px = toX(p.x / 2), py = toY(p.t);
+      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+
+    // Left eye trace (green)
+    ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    smoothed.forEach((p, i) => {
+      const px = toX(-p.x / 2), py = toY(p.t);
       i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
     });
     ctx.stroke();
     ctx.globalAlpha = 1;
+
+    // Legend
+    ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillStyle = '#FF5252'; ctx.fillText('RE (right eye)', pad.left + 4, h - 8);
+    ctx.fillStyle = '#4CAF50'; ctx.fillText('LE (left eye)', pad.left + 110, h - 8);
   }, [positionLog, phaseMarkers, startTime]);
 
-  return <canvas ref={canvasRef} width={500} height={700}
+  return <canvas ref={canvasRef}
     style={{ width: '100%', borderRadius: '6px', border: '1px solid rgba(43, 70, 128, 0.15)' }} />;
 }
 
@@ -1793,44 +1837,49 @@ function VerticalTimelineGraph({ positionLog, phaseMarkers, startTime }) {
     const canvas = canvasRef.current;
     if (!canvas || !positionLog?.length) return;
     const ctx = canvas.getContext('2d');
-    const w = canvas.width, h = canvas.height;
+    const dpr = window.devicePixelRatio || 1;
+    const logW = 1200, logH = 400;
+    canvas.width = logW * dpr;
+    canvas.height = logH * dpr;
+    canvas.style.width = '100%';
+    canvas.style.height = 'auto';
+    ctx.scale(dpr, dpr);
+    const w = logW, h = logH;
     const pad = { left: 55, right: 20, top: 25, bottom: 25 };
     const plotW = w - pad.left - pad.right;
     const plotH = h - pad.top - pad.bottom;
 
-    ctx.fillStyle = '#0a0a0f';
+    ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, w, h);
 
     const raw = [...positionLog].filter(p => p.type === 'track').sort((a, b) => a.t - b.t);
-    const smoothed = smoothPositionData(raw, 7);
+    const smoothed = smoothPositionData(raw, 40);
     if (smoothed.length < 2) return;
 
     const t0 = startTime || smoothed[0].t;
     const tEnd = smoothed[smoothed.length - 1].t;
     const tRange = Math.max(tEnd - t0, 1000);
 
+    // Use half-displacement for maxAbs since we split 50/50
     let maxAbs = 10;
-    for (const p of smoothed) maxAbs = Math.max(maxAbs, Math.abs(p.y));
+    for (const p of smoothed) maxAbs = Math.max(maxAbs, Math.abs(p.y) / 2);
     maxAbs = Math.ceil(maxAbs * 1.3);
 
     // Time along X, vertical position along Y
-    // In data: +Y = patient moved target DOWN = right eye is HYPO (or left hyper)
-    // Display: +Y data plots DOWNWARD on graph (right hypo = down on graph)
-    // -Y data = patient moved target UP = right eye is HYPER = plots UPWARD
     const toX = t => pad.left + ((t - t0) / tRange) * plotW;
     const toY = v => pad.top + plotH / 2 + (v / maxAbs) * (plotH / 2); // +v = down on graph
 
-    // Zero line
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1;
+    // Grid: Zero line
+    ctx.strokeStyle = 'rgba(43, 70, 128, 0.15)'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(pad.left, toY(0)); ctx.lineTo(w - pad.right, toY(0)); ctx.stroke();
 
     // Labels
-    ctx.fillStyle = '#ffa726'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
-    ctx.fillText('Right Eye — Vertical Position', pad.left, pad.top - 8);
-    ctx.fillStyle = '#555b6e'; ctx.font = '10px sans-serif';
+    ctx.fillStyle = '#91aaeb'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('Vertical Alignment — Both Eyes', pad.left, pad.top - 8);
+    ctx.fillStyle = '#91aaeb'; ctx.font = '10px sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText('R Hyper ↑', pad.left - 4, pad.top + 10);
-    ctx.fillText('R Hypo ↓', pad.left - 4, h - pad.bottom - 4);
+    ctx.fillText('Hyper', pad.left - 4, pad.top + 10);
+    ctx.fillText('Hypo', pad.left - 4, h - pad.bottom - 4);
 
     // Y axis labels
     ctx.font = '9px monospace';
@@ -1841,6 +1890,7 @@ function VerticalTimelineGraph({ positionLog, phaseMarkers, startTime }) {
 
     // Time labels
     ctx.textAlign = 'center';
+    ctx.fillStyle = '#91aaeb';
     const totalS = tRange / 1000;
     const tickInt = totalS > 120 ? 30 : totalS > 60 ? 10 : totalS > 20 ? 5 : 2;
     for (let s = 0; s <= totalS; s += tickInt) {
@@ -1854,29 +1904,44 @@ function VerticalTimelineGraph({ positionLog, phaseMarkers, startTime }) {
       const mx = toX(markers[i].t);
       const nextX = i + 1 < markers.length ? toX(markers[i + 1].t) : w - pad.right;
       if (i % 2 === 0) {
-        ctx.fillStyle = 'rgba(255,152,0,0.03)';
+        ctx.fillStyle = 'rgba(173, 198, 255, 0.06)';
         ctx.fillRect(mx, pad.top, nextX - mx, plotH);
       }
-      ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(43, 70, 128, 0.15)'; ctx.lineWidth = 1;
       ctx.setLineDash([3, 3]);
       ctx.beginPath(); ctx.moveTo(mx, pad.top); ctx.lineTo(mx, h - pad.bottom); ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillStyle = '#91aaeb';
       ctx.fillText(markers[i].label, (mx + nextX) / 2, pad.top - 2);
     }
 
-    // Smoothed trace
-    ctx.strokeStyle = '#ffa726'; ctx.lineWidth = 2; ctx.globalAlpha = 0.85;
+    // Draw TWO traces: Right eye (red) at +displacement/2, Left eye (green) at -displacement/2
+    // Right eye trace (warm red)
+    ctx.strokeStyle = '#FF5252'; ctx.lineWidth = 2; ctx.globalAlpha = 0.85;
     ctx.beginPath();
     smoothed.forEach((p, i) => {
-      const px = toX(p.t), py = toY(p.y);
+      const px = toX(p.t), py = toY(p.y / 2);
+      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+
+    // Left eye trace (green)
+    ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    smoothed.forEach((p, i) => {
+      const px = toX(p.t), py = toY(-p.y / 2);
       i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
     });
     ctx.stroke();
     ctx.globalAlpha = 1;
+
+    // Legend
+    ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillStyle = '#FF5252'; ctx.fillText('RE (right eye)', pad.left + 4, h - 4);
+    ctx.fillStyle = '#4CAF50'; ctx.fillText('LE (left eye)', pad.left + 110, h - 4);
   }, [positionLog, phaseMarkers, startTime]);
 
-  return <canvas ref={canvasRef} width={700} height={250}
+  return <canvas ref={canvasRef}
     style={{ width: '100%', borderRadius: '6px', border: '1px solid rgba(43, 70, 128, 0.15)' }} />;
 }
 
@@ -1889,11 +1954,18 @@ function FDCurveGraph({ sweepResults }) {
     const canvas = canvasRef.current;
     if (!canvas || !curve) return;
     const ctx = canvas.getContext('2d');
-    const w = canvas.width, h = canvas.height;
+    const dpr = window.devicePixelRatio || 1;
+    const logW = 1200, logH = 400;
+    canvas.width = logW * dpr;
+    canvas.height = logH * dpr;
+    canvas.style.width = '100%';
+    canvas.style.height = 'auto';
+    ctx.scale(dpr, dpr);
+    const w = logW, h = logH;
     const pad = { top: 20, right: 20, bottom: 30, left: 55 };
     const pw = w - pad.left - pad.right, ph = h - pad.top - pad.bottom;
 
-    ctx.fillStyle = '#0d1117';
+    ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, w, h);
 
     const pts = curve.points;
@@ -1904,14 +1976,14 @@ function FDCurveGraph({ sweepResults }) {
     const toY = f => pad.top + ph / 2 - (f / maxF) * (ph / 2);
 
     // Grid
-    ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(43, 70, 128, 0.15)'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(pad.left, toY(0)); ctx.lineTo(w - pad.right, toY(0)); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(toX(0), pad.top); ctx.lineTo(toX(0), h - pad.bottom); ctx.stroke();
 
     // Labels
-    ctx.fillStyle = '#555b6e'; ctx.font = '10px monospace'; ctx.textAlign = 'center';
-    ctx.fillText('BO ←', pad.left + 30, h - 5);
-    ctx.fillText('→ BI', w - pad.right - 30, h - 5);
+    ctx.fillStyle = '#91aaeb'; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+    ctx.fillText('BO', pad.left + 30, h - 5);
+    ctx.fillText('BI', w - pad.right - 30, h - 5);
     ctx.textAlign = 'right';
     ctx.fillText('Eso', pad.left - 4, pad.top + 10);
     ctx.fillText('Exo', pad.left - 4, h - pad.bottom - 4);
@@ -1938,11 +2010,11 @@ function FDCurveGraph({ sweepResults }) {
     }
 
     // Slope annotation
-    ctx.fillStyle = '#9298a8'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillStyle = '#91aaeb'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
     ctx.fillText(`Slope: ${curve.slope.toFixed(3)}`, w - pad.right, pad.top + 10);
   }, [curve]);
 
-  return <canvas ref={canvasRef} width={600} height={220}
+  return <canvas ref={canvasRef}
     style={{ width: '100%', borderRadius: '6px', border: '1px solid rgba(43, 70, 128, 0.15)' }} />;
 }
 
@@ -1973,11 +2045,18 @@ function RecoveryDynamicsGraph({ recoveryPoints }) {
     const canvas = canvasRef.current;
     if (!canvas || !analysis) return;
     const ctx = canvas.getContext('2d');
-    const w = canvas.width, h = canvas.height;
+    const dpr = window.devicePixelRatio || 1;
+    const logW = 1200, logH = 300;
+    canvas.width = logW * dpr;
+    canvas.height = logH * dpr;
+    canvas.style.width = '100%';
+    canvas.style.height = 'auto';
+    ctx.scale(dpr, dpr);
+    const w = logW, h = logH;
     const pad = { top: 20, right: 20, bottom: 30, left: 50 };
     const pw = w - pad.left - pad.right, ph = h - pad.top - pad.bottom;
 
-    ctx.fillStyle = '#0d1117';
+    ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, w, h);
 
     const pts = analysis.points;
@@ -1989,7 +2068,7 @@ function RecoveryDynamicsGraph({ recoveryPoints }) {
     const toY = v => pad.top + ph / 2 - (v / maxAbs) * (ph / 2);
 
     // Zero line
-    ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(43, 70, 128, 0.15)'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(pad.left, toY(0)); ctx.lineTo(w - pad.right, toY(0)); ctx.stroke();
 
     // H line (blue)
@@ -2011,11 +2090,11 @@ function RecoveryDynamicsGraph({ recoveryPoints }) {
     }
 
     // Annotations
-    ctx.fillStyle = '#9298a8'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillStyle = '#91aaeb'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
     ctx.fillText(`${analysis.damping} | settle: ${analysis.timeToStabilize}s | oscillations: ${analysis.oscillationCount}`, pad.left, h - 5);
   }, [analysis]);
 
-  return <canvas ref={canvasRef} width={600} height={180}
+  return <canvas ref={canvasRef}
     style={{ width: '100%', borderRadius: '6px', border: '1px solid rgba(43, 70, 128, 0.15)' }} />;
 }
 
@@ -2027,11 +2106,18 @@ function HVScatterPlot({ trials }) {
     const canvas = canvasRef.current;
     if (!canvas || trials.length < 1) return;
     const ctx = canvas.getContext('2d');
-    const w = canvas.width, h = canvas.height;
+    const dpr = window.devicePixelRatio || 1;
+    const logW = 1200, logH = 600;
+    canvas.width = logW * dpr;
+    canvas.height = logH * dpr;
+    canvas.style.width = '100%';
+    canvas.style.height = 'auto';
+    ctx.scale(dpr, dpr);
+    const w = logW, h = logH;
     const pad = { top: 20, right: 20, bottom: 30, left: 50 };
     const pw = w - pad.left - pad.right, ph = h - pad.top - pad.bottom;
 
-    ctx.fillStyle = '#0d1117';
+    ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, w, h);
 
     const hs = trials.map(t => t.horizontalPrism);
@@ -2043,14 +2129,14 @@ function HVScatterPlot({ trials }) {
     const toY = v => pad.top + ((v + maxV) / (2 * maxV)) * ph;
 
     // Crosshair
-    ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(43, 70, 128, 0.15)'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(toX(0), pad.top); ctx.lineTo(toX(0), h - pad.bottom); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(pad.left, toY(0)); ctx.lineTo(w - pad.right, toY(0)); ctx.stroke();
 
     // Labels
-    ctx.fillStyle = '#555b6e'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText('Eso →', w - pad.right - 20, toY(0) - 4);
-    ctx.fillText('← Exo', pad.left + 20, toY(0) - 4);
+    ctx.fillStyle = '#91aaeb'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Eso', w - pad.right - 20, toY(0) - 4);
+    ctx.fillText('Exo', pad.left + 20, toY(0) - 4);
     ctx.textAlign = 'right';
     ctx.fillText('Hyper', pad.left - 4, pad.top + 10);
     ctx.fillText('Hypo', pad.left - 4, h - pad.bottom - 4);
@@ -2064,15 +2150,15 @@ function HVScatterPlot({ trials }) {
       ctx.fillStyle = colors[t.protocol] || '#6baaff';
       ctx.beginPath();
       if (t.phase === 'near') {
-        ctx.rect(x - 4, y - 4, 8, 8); ctx.fill();
+        ctx.rect(x - 5, y - 5, 10, 10); ctx.fill();
       } else {
-        ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
       }
     });
 
     // Correlation
     const r = pearsonCorrelation(hs, vs);
-    ctx.fillStyle = '#9298a8'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillStyle = '#91aaeb'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
     ctx.fillText(`r = ${r.toFixed(3)} (n=${trials.length})`, w - pad.right, pad.top - 4);
 
     // Legend
@@ -2080,13 +2166,13 @@ function HVScatterPlot({ trials }) {
     let lx = pad.left;
     Object.entries(colors).forEach(([k, c]) => {
       ctx.fillStyle = c; ctx.fillRect(lx, h - 10, 8, 8);
-      ctx.fillStyle = '#555b6e'; ctx.fillText(k, lx + 10, h - 3);
+      ctx.fillStyle = '#91aaeb'; ctx.fillText(k, lx + 10, h - 3);
       lx += ctx.measureText(k).width + 20;
     });
   }, [trials]);
 
-  return <canvas ref={canvasRef} width={400} height={300}
-    style={{ width: '100%', maxWidth: 400, borderRadius: '6px', border: '1px solid rgba(43, 70, 128, 0.15)' }} />;
+  return <canvas ref={canvasRef}
+    style={{ width: '100%', maxWidth: 600, borderRadius: '6px', border: '1px solid rgba(43, 70, 128, 0.15)' }} />;
 }
 
 const thStyle = { textAlign: 'left', padding: '6px 8px', color: 'var(--on-surface-dim)', fontWeight: 600, whiteSpace: 'nowrap', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.04em' };

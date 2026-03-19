@@ -491,7 +491,7 @@ export function extractPhaseMetrics(positionLog, phaseMarkers) {
 /**
  * Apply simple smoothing (moving average) to position data.
  */
-export function smoothPositionData(points, windowSize = 5) {
+export function smoothPositionData(points, windowSize = 40) {
   if (points.length < windowSize) return points;
   const half = Math.floor(windowSize / 2);
   return points.map((p, i) => {
